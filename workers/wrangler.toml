@@ -1,0 +1,16 @@
+name = "novel-reader-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "novel-reader-db"
+database_id = "D1_DATABASE_ID"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "KV_NAMESPACE_ID"
+
+[dev]
+port = 8787

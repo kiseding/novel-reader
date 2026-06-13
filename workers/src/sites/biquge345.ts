@@ -1,0 +1,128 @@
+// Ported from go-novel-dl internal/site/biquge345.go
+import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL } from "../types";
+import { fetchHTML, postFormHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
+import * as cheerio from "cheerio";
+
+const BASE = "https://www.biquge345.com";
+const BOOK_RE = /^\/book\/(\d+)\/?$/;
+const CHAPTER_RE = /^\/chapter\/(\d+)\/(\d+)\.html$/;
+
+export class Biquge345Source implements SiteSource {
+  readonly key = "biquge345";
+  readonly displayName = "笔趣阁345";
+  readonly tags = ["中文", "网文"];
+
+  resolveURL(url: string): ResolvedURL | null {
+    try {
+      const u = new URL(url);
+      if (u.hostname.replace("www.", "") !== "biquge345.com") return null;
+      let m = u.pathname.match(CHAPTER_RE);
+      if (m) return { siteKey: this.key, bookId: m[1], chapterId: m[2], canonical: `${BASE}${u.pathname}` };
+      m = u.pathname.match(BOOK_RE);
+      if (m) return { siteKey: this.key, bookId: m[1], canonical: `${BASE}${u.pathname}` };
+    } catch {}
+    return null;
+  }
+
+  async search(keyword: string, limit: number): Promise<SearchResult[]> {
+    const form = new URLSearchParams();
+    form.set("type", "articlename");
+    form.set("s", keyword);
+    const html = await postFormHTML(`${BASE}/s.php`, form);
+    const $ = parseHTML(html);
+    const results: SearchResult[] = [];
+    const seen = new Set<string>();
+
+    // Try multiple selector patterns (site may have changed structure)
+    const items = $("ul.search li, .list-item, .result-item").toArray();
+    if (items.length) {
+      items.forEach((li) => {
+        if ($(li).hasClass("fen")) return;
+        const link = $(li).find(".name a, a").first();
+        const href = link.attr("href") || "";
+        const m = href.match(BOOK_RE);
+        if (!m) return;
+        const bookId = m[1];
+        if (seen.has(bookId)) return;
+        seen.add(bookId);
+        results.push({
+          site: this.key, bookId,
+          title: cleanText(link.text()),
+          author: cleanText($(li).find(".zuo a, .author a, .author").first().text()),
+          description: "",
+          url: absolutizeURL(BASE, href),
+        coverUrl: "",
+        latestChapter: cleanText($(li).find(".jie a").first().text()),
+      });
+    });
+    }
+
+    return limit > 0 ? results.slice(0, limit) : results;
+  }
+
+  async downloadPlan(bookId: string): Promise<BookDetail> {
+    const html = await fetchHTML(`${BASE}/book/${bookId}/`);
+    const $ = parseHTML(html);
+
+    const title = cleanText($(".right_border h1").first().text());
+    const author = cleanText($(".x1 a").first().text());
+    const description = cleanText($(".x3").first().text());
+    const coverUrl = absolutizeURL(BASE, $(".zhutu img").first().attr("src") || "");
+
+    const chapters = $(".info a").map((_, a) => {
+      const href = $(a).attr("href") || "";
+      const m = href.match(CHAPTER_RE);
+      if (!m) return null;
+      return {
+        id: m[2],
+        title: cleanText($(a).text()),
+        url: absolutizeURL(BASE, href),
+        order: 0,
+      };
+    }).get().filter(Boolean) as { id: string; title: string; url: string; order: number }[];
+
+    // Ad removal markers
+    const filteredChapters = chapters.filter((ch) => {
+      const t = ch.title;
+      return !t.includes("biquge345") && !t.includes("笔趣阁");
+    });
+
+    return {
+      site: this.key,
+      bookId,
+      title: title || bookId,
+      author: author || "未知",
+      description: description || "",
+      coverUrl,
+      sourceUrl: `${BASE}/book/${bookId}/`,
+      chapters: filteredChapters.map((ch, i) => ({ ...ch, order: i + 1 })),
+    };
+  }
+
+  async fetchChapter(
+    bookId: string,
+    chapter: { id: string; url: string; title: string }
+  ): Promise<ChapterContent> {
+    const html = await fetchHTML(`${BASE}/chapter/${bookId}/${chapter.id}.html`);
+    const $ = parseHTML(html);
+
+    let title = cleanText($("#neirong h1").first().text()) || chapter.title;
+    const contentDiv = $("#txt");
+    const paragraphs: string[] = [];
+    contentDiv.contents().each((_, node) => {
+      if (node.type === "text") {
+        const line = cleanText($(node).text());
+        if (line && !isAd(line)) paragraphs.push(line);
+      } else if (node.type === "tag") {
+        const text = cleanText($(node).text());
+        if (text && !isAd(text)) paragraphs.push(text);
+      }
+    });
+
+    return { id: chapter.id, title, content: paragraphs.join("\n") };
+  }
+}
+
+function isAd(line: string): boolean {
+  return !line || line.includes("biquge345") || line.includes("笔趣阁小说网");
+}

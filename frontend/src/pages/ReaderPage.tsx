@@ -1,0 +1,332 @@
+// Mobile-first reader with swipe gestures, paged/scroll modes
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
+import * as api from "../lib/api";
+import type { ChapterContent, BookDetail } from "../lib/api";
+import * as cache from "../lib/cache";
+
+export default function ReaderPage() {
+  const { site, bookId, chapterId } = useParams<{ site: string; bookId: string; chapterId: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const chapterTitle = searchParams.get("title") || "";
+  const chapterUrl = searchParams.get("url") || "";
+
+  const [content, setContent] = useState<ChapterContent | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem("rf") || 18));
+  const [paged, setPaged] = useState(() => localStorage.getItem("rp") === "1");
+  const [showMenu, setShowMenu] = useState(false);
+  const [chapters, setChapters] = useState<{ id: string; title: string }[]>([]);
+  const [bookMeta, setBookMeta] = useState<{ title: string; author: string; coverUrl: string } | null>(null);
+  const [chIdx, setChIdx] = useState(-1);
+  const [page, setPage] = useState(0);
+  const [winH, setWinH] = useState(() => window.innerHeight);
+  const [flipDir, setFlipDir] = useState<"" | "left" | "right">("");
+  const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
+  const touchedRef = useRef(false); // suppress click after touch swipe
+
+  // Window resize
+  useEffect(() => {
+    const h = () => setWinH(window.innerHeight);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+
+  // Persist settings
+  useEffect(() => { localStorage.setItem("rf", String(fontSize)); }, [fontSize]);
+  useEffect(() => { localStorage.setItem("rp", paged ? "1" : "0"); }, [paged]);
+
+  // Fetch chapter
+  useEffect(() => {
+    if (!site || !bookId || !chapterId) return;
+    let stale = false;
+    setLoading(true); setError(""); setPage(0);
+    const ck = cache.chapterCacheKey(site, bookId, chapterId);
+    cache.getCachedChapter(ck).then(c => {
+      if (stale) return;
+      if (c) { setContent({ id: chapterId, title: chapterTitle, content: c }); setLoading(false); return; }
+      api.getChapterContent(site, bookId, chapterId, chapterTitle, chapterUrl)
+        .then(r => { if (!stale) { setContent(r); cache.setCachedChapter(ck, r.content); } })
+        .catch(e => { if (!stale) setError(e.message); }).finally(() => { if (!stale) setLoading(false); });
+    });
+    window.scrollTo(0, 0);
+    return () => { stale = true; };
+  }, [site, bookId, chapterId]);
+
+  // Chapter list + book meta
+  useEffect(() => {
+    if (!site || !bookId) return;
+    api.getBookDetail(site, bookId).then((b: BookDetail) => {
+      setChapters(b.chapters.map(ch => ({ id: ch.id, title: ch.title })));
+      setBookMeta({ title: b.title, author: b.author || "", coverUrl: b.coverUrl || "" });
+    }).catch(() => {});
+  }, [site, bookId]);
+
+  // Record reading history with real book metadata (book name as title, not chapter name)
+  useEffect(() => {
+    if (!site || !bookId || !chapterId || !bookMeta) return;
+    api.addHistory({
+      site, bookId,
+      title: bookMeta.title,
+      author: bookMeta.author,
+      coverUrl: bookMeta.coverUrl,
+      chapterId,
+      chapterTitle,
+    }).catch(() => {});
+  }, [site, bookId, chapterId, chapterTitle, bookMeta]);
+
+  useEffect(() => {
+    if (chapters.length) setChIdx(chapters.findIndex(ch => ch.id === chapterId));
+  }, [chapters, chapterId]);
+
+  // Sync reading progress to bookshelf (no-op if book not on shelf)
+  useEffect(() => {
+    if (!site || !bookId || !chapterId || chIdx < 0) return;
+    api.updateReadingProgress(site, bookId, chIdx, chapterId, chapterTitle).catch(() => {});
+  }, [site, bookId, chapterId, chIdx, chapterTitle]);
+
+  // Preload next chapters
+  useEffect(() => {
+    if (!site || !bookId || chIdx < 0) return;
+    for (let i = 1; i <= 3; i++) {
+      const idx = chIdx + i;
+      if (idx >= chapters.length) break;
+      const ck = cache.chapterCacheKey(site, bookId, chapters[idx].id);
+      cache.getCachedChapter(ck).then(c => { if (!c) api.getChapterContent(site, bookId, chapters[idx].id, "", "").then(r => cache.setCachedChapter(ck, r.content)).catch(() => {}); });
+    }
+  }, [chIdx]);
+
+  const goChapter = useCallback((id: string) => {
+    const ch = chapters.find(c => c.id === id);
+    if (!ch) return;
+    navigate(`/read/${site}/${bookId}/${id}?title=${encodeURIComponent(ch.title)}&url=`);
+    setPage(0);
+  }, [site, bookId, chapters, navigate]);
+
+  // Keyboard
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (showMenu) return;
+      if (e.key === "ArrowLeft" && chIdx > 0) goChapter(chapters[chIdx - 1].id);
+      if (e.key === "ArrowRight" && chIdx < chapters.length - 1) goChapter(chapters[chIdx + 1].id);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [showMenu, chIdx, chapters, goChapter]);
+
+  const paragraphs = useMemo(() => content?.content.split("\n").filter(Boolean) || [], [content]);
+
+  // Paged mode: split paragraphs across pages; allow mid-paragraph cuts.
+  const computedPages = useMemo<Array<Array<{ text: string; indent: boolean }>>>(() => {
+    if (!paged || winH < 300 || !paragraphs.length) {
+      return [paragraphs.map(p => ({ text: p, indent: true }))];
+    }
+
+    const containerW = Math.min(window.innerWidth - 32, 800);
+    const cjkW = fontSize;
+    const latinW = fontSize * 0.55;
+    const charW = (ch: string) => {
+      const code = ch.charCodeAt(0);
+      if ((code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3000 && code <= 0x303f) || (code >= 0xff00 && code <= 0xffef) || ch === '　') return cjkW;
+      return latinW;
+    };
+
+    const lh = fontSize * 1.8;
+    const contentH = winH - 80;
+    const linesPerPage = Math.max(1, Math.floor(contentH / lh));
+    const indentW = fontSize * 2;
+
+    const linesNeeded = (text: string, hasIndent: boolean): number => {
+      let total = 0;
+      for (const ch of text) total += charW(ch);
+      if (total === 0) return 1;
+      const firstW = hasIndent ? containerW - indentW : containerW;
+      if (total <= firstW) return 1;
+      return 1 + Math.ceil((total - firstW) / containerW);
+    };
+
+    // Greedy fit: pack chars into `availLines` lines, return [fitted, rest].
+    const fitChars = (text: string, availLines: number, hasIndent: boolean): [string, string] => {
+      const firstW = hasIndent ? containerW - indentW : containerW;
+      let consumed = 0;
+      let lineIdx = 0;
+      let lineCap = firstW;
+      for (let i = 0; i < text.length; i++) {
+        const w = charW(text[i]);
+        if (consumed + w > lineCap) {
+          lineIdx++;
+          if (lineIdx >= availLines) return [text.slice(0, i), text.slice(i)];
+          consumed = w;
+          lineCap = containerW;
+        } else {
+          consumed += w;
+        }
+      }
+      return [text, ""];
+    };
+
+    const pages: Array<Array<{ text: string; indent: boolean }>> = [];
+    let curPage: Array<{ text: string; indent: boolean }> = [];
+    let curLines = 0;
+
+    const flush = () => { pages.push(curPage); curPage = []; curLines = 0; };
+
+    for (let pi = 0; pi < paragraphs.length; pi++) {
+      let remaining = paragraphs[pi];
+      let firstFrag = true;
+      while (remaining.length > 0) {
+        const avail = linesPerPage - curLines;
+        if (avail <= 0) { flush(); continue; }
+        const need = linesNeeded(remaining, firstFrag);
+        if (need <= avail) {
+          curPage.push({ text: remaining, indent: firstFrag });
+          curLines += need;
+          remaining = "";
+        } else {
+          const [fit, rest] = fitChars(remaining, avail, firstFrag);
+          if (!fit) { flush(); continue; }
+          curPage.push({ text: fit, indent: firstFrag });
+          flush();
+          remaining = rest;
+          firstFrag = false;
+        }
+      }
+      // Paragraph spacing: count one extra line gap, but only if more content fits.
+      if (curLines > 0 && curLines < linesPerPage) curLines += 1;
+    }
+
+    if (curPage.length > 0) flush();
+    return pages.length > 0 ? pages : [paragraphs.map(p => ({ text: p, indent: true }))];
+  }, [paragraphs, fontSize, winH, paged]);
+
+  const totalPages = computedPages.length;
+  const hasPrevCh = chIdx > 0;
+  const hasNextCh = chIdx < chapters.length - 1;
+
+  const nextPage = () => {
+    if (paged && page < totalPages - 1) { setFlipDir("right"); setTimeout(() => { setPage(p => p + 1); setFlipDir(""); }, 150); return; }
+    if (hasNextCh) goChapter(chapters[chIdx + 1].id);
+  };
+  const prevPage = () => {
+    if (paged && page > 0) { setFlipDir("left"); setTimeout(() => { setPage(p => p - 1); setFlipDir(""); }, 150); return; }
+    if (hasPrevCh) goChapter(chapters[chIdx - 1].id);
+  };
+
+  // Swipe detection
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStart.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.current.x;
+    const dy = t.clientY - touchStart.current.y;
+    const dt = Date.now() - touchStart.current.t;
+    touchStart.current = null;
+    if (dt < 500 && Math.abs(dx) > 50 && Math.abs(dy) < Math.abs(dx) * 1.5) {
+      touchedRef.current = true;
+      setTimeout(() => { touchedRef.current = false; }, 300);
+      if (dx < -60) nextPage();
+      else if (dx > 60) prevPage();
+    }
+  };
+
+  const onTap = (e: React.MouseEvent) => {
+    if (touchedRef.current) return; // suppress click after touch swipe
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const w = rect.width;
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+    if (x > w * 0.25 && x < w * 0.75 && y > h * 0.2 && y < h * 0.8) {
+      setShowMenu(v => !v);
+    } else if (paged && x < w * 0.25) {
+      prevPage();
+    } else if (paged && x > w * 0.75) {
+      nextPage();
+    }
+  };
+
+  // Loading / Error states
+  if (loading) return <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex items-center justify-center`}><div className="animate-spin rounded-full h-8 w-8 border-2 border-[#2563eb] border-t-transparent" /></div>;
+  if (error) return <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex items-center justify-center`}><div className="text-center"><p className="text-red-500 mb-4">{error}</p><button onClick={() => navigate(-1)} className="btn-ghost">返回</button></div></div>;
+  if (!content) return null;
+
+  return (
+    <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`} style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {/* Top status bar */}
+      <div className="h-1 bg-gray-700/20 dark:bg-gray-300/10">
+        <div className="h-full bg-[#2563eb] transition-all duration-300" style={{ width: `${chapters.length ? ((chIdx + 1) / chapters.length) * 100 : 0}%` }} />
+      </div>
+
+      {/* Reading area */}
+      <div className="flex-1 overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
+        {paged ? (
+          /* PAGED MODE with flip animation */
+          <div className="h-full flex items-center px-4 overflow-hidden" style={{ paddingTop: 24, paddingBottom: 24, perspective: "1200px" }}>
+            <div className={`w-full max-w-[800px] mx-auto transition-all duration-200 ${flipDir === "right" ? "opacity-0 -translate-x-8 rotate-y-12" : flipDir === "left" ? "opacity-0 translate-x-8 -rotate-y-12" : "opacity-100"}`}>
+              {content.title && page === 0 && <h1 className="text-center font-bold mb-6" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
+              <div style={{ fontSize, lineHeight: 1.8 }}>
+                {(computedPages[page] || []).map((frag, i) => <p key={i} className={frag.indent ? "indent-8" : ""} style={{ fontSize, marginBottom: fontSize * 0.5 }}>{frag.text}</p>)}
+              </div>
+              {totalPages > 1 && <div className="text-center text-xs text-gray-400 mt-4">{page + 1}/{totalPages}</div>}
+            </div>
+          </div>
+        ) : (
+          /* SCROLL MODE */
+          <div className="h-full overflow-y-auto overscroll-contain px-4" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div className="max-w-[800px] mx-auto py-8">
+              {content.title && <h1 className="text-center font-bold mb-8" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
+              <div style={{ fontSize, lineHeight: 1.8 }}>
+                {paragraphs.map((p, i) => <p key={i} className="indent-8" style={{ fontSize, marginBottom: fontSize * 0.6 }}>{p}</p>)}
+              </div>
+              {/* Chapter nav at end */}
+              {chapters.length > 0 && <div className="flex justify-between mt-12 mb-8">
+                <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasPrevCh} onClick={() => { if (chapters[chIdx - 1]) goChapter(chapters[chIdx - 1].id); }}>← 上一章</button>
+                <span className="text-sm text-gray-400 self-center">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"}</span>
+                <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasNextCh} onClick={() => { if (chapters[chIdx + 1]) goChapter(chapters[chIdx + 1].id); }}>下一章 →</button>
+              </div>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Floating chapter indicator (paged mode) */}
+      {paged && <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-gray-400 pointer-events-none">{chIdx + 1}/{chapters.length}</div>}
+
+      {/* Menu overlay */}
+      {showMenu && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/65 dark:bg-black/80" onClick={() => setShowMenu(false)}>
+          <div className="h-14 flex items-center justify-between px-4" onClick={e => e.stopPropagation()}>
+            <Link to={`/book/${site}/${bookId}`} className="text-white/80 text-sm" onClick={() => setShowMenu(false)}>← 目录</Link>
+            <span className="text-white/60 text-sm">{chIdx + 1}/{chapters.length}</span>
+            <button className="text-white/80 text-lg" onClick={() => setShowMenu(false)}>✕</button>
+          </div>
+          <div className="flex-1" onClick={() => setShowMenu(false)} />
+          <div className={`p-4 space-y-4 bg-gray-900/95 transition-transform duration-300 ${showMenu ? "translate-y-0" : "translate-y-full"}`} onClick={e => e.stopPropagation()}>
+            {/* Chapter nav */}
+            <div className="flex justify-between">
+              <button className="text-white/80 text-sm min-h-[44px] px-4" disabled={!hasPrevCh} onClick={() => { if (hasPrevCh) { goChapter(chapters[chIdx - 1].id); setShowMenu(false); } }}>← 上一章</button>
+              <button className="text-white/80 text-sm min-h-[44px] px-4" disabled={!hasNextCh} onClick={() => { if (hasNextCh) { goChapter(chapters[chIdx + 1].id); setShowMenu(false); } }}>下一章 →</button>
+            </div>
+            {/* Mode toggle */}
+            <div className="flex justify-center gap-2">
+              <button onClick={() => setPaged(false)} className={`px-4 py-1.5 rounded-full text-sm ${!paged ? "bg-[#2563eb] text-white" : "text-white/60"}`}>滚动</button>
+              <button onClick={() => setPaged(true)} className={`px-4 py-1.5 rounded-full text-sm ${paged ? "bg-[#2563eb] text-white" : "text-white/60"}`}>翻页</button>
+            </div>
+            {/* Font size */}
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setFontSize(s => Math.max(14, s - 2))} className="text-white/60 px-3 text-sm">A-</button>
+              <input type="range" min={14} max={28} value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="flex-1 max-w-[200px] accent-[#2563eb]" />
+              <button onClick={() => setFontSize(s => Math.min(28, s + 2))} className="text-white/60 px-3 text-sm">A+</button>
+            </div>
+            {/* Theme */}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
