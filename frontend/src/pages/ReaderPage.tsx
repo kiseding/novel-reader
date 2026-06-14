@@ -65,12 +65,12 @@ export default function ReaderPage() {
     if (!site || !bookId) return;
     api.getBookDetail(site, bookId).then((b: BookDetail) => {
       const raw = b.chapters.map(ch => ({ id: ch.id, title: ch.title }));
-      // Auto-detect reverse order: if first chapter number > last, reverse for reading direction
-      if (raw.length > 1) {
-        const a = parseInt(raw[0].id.match(/\d+/)?.[0] || "0");
-        const b = parseInt(raw[raw.length - 1].id.match(/\d+/)?.[0] || "0");
-        if (a > b) raw.reverse();
-      }
+      // Sort by chapter number for reliable reading order
+      raw.sort((a, b) => {
+        const na = parseInt(a.id.match(/\d+/)?.[0] || "0");
+        const nb = parseInt(b.id.match(/\d+/)?.[0] || "0");
+        return na - nb;
+      });
       setChapters(raw);
       setBookMeta({ title: b.title, author: b.author || "", coverUrl: b.coverUrl || "" });
     }).catch(() => {});
@@ -121,8 +121,8 @@ export default function ReaderPage() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (showToc) return;
-      if (e.key === "ArrowLeft" && chIdx > 0) goChapter(chapters[chIdx - 1].id);
-      if (e.key === "ArrowRight" && chIdx >= 0 && chIdx < chapters.length - 1) goChapter(chapters[chIdx + 1].id);
+      if (e.key === "ArrowLeft" && hasPrevCh) goChapter(chapters[chIdx - 1].id);
+      if (e.key === "ArrowRight" && hasNextCh) goChapter(chapters[chIdx + 1].id);
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
