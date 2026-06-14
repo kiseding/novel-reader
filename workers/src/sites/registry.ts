@@ -11,7 +11,6 @@ import { Ixdzs8Source } from "./ixdzs8";
 import { FsshuSource } from "./fsshu";
 import { HaiwaishubaoSource } from "./haiwaishubao";
 import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
-import { normalizeChapters } from "../utils/chapters";
 
 export interface SourceMeta {
   key: string;
@@ -201,7 +200,6 @@ export class SiteRegistry {
     const source = this.sources.get(siteKey);
     if (!source) throw new Error(`未找到书源: ${siteKey}`);
     const detail = await source.downloadPlan(bookId);
-    detail.chapters = normalizeChapters(detail.chapters);
     return detail;
   }
 
