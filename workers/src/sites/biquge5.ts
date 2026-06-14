@@ -83,8 +83,9 @@ export class Biquge5Source implements SiteSource {
 
     collectChapters($);
 
-    // Biquge5 uses index_N.html pagination (index_1.html, index_2.html, ...)
-    for (let page = 1; page < 30; page++) {
+    // Biquge5 uses index_N.html pagination (index_2.html, index_3.html, ...)
+    // Skip index_1 — it's the same as the main page already fetched
+    for (let page = 2; page <= 30; page++) {
       const nextUrl = `${BASE}/${bookId}/index_${page}.html`;
       try {
         const pageHtml = await withRetry(() => fetchHTML(nextUrl));
