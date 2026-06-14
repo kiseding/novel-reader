@@ -283,8 +283,8 @@ export default function ReaderPage() {
   return (
     <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`} style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       {/* Sticky title bar */}
-      <div className={}>
-        <Link to={} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">← 返回</Link>
+      <div className={`sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 py-1.5 border-b border-gray-200 dark:border-gray-700 transition-all duration-300 ${showHeader ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"}`}>
+        <Link to={`/book/${site}/${bookId}`} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">← 返回</Link>
         <span className="text-sm font-medium line-clamp-1 text-center mx-2 flex-1 min-w-0">{content?.title || chapterTitle}</span>
         <button onClick={() => setShowToc(true)} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"} 目录</button>
       </div>
