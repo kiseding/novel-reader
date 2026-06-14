@@ -1,6 +1,7 @@
 // Mobile-first reader with swipe gestures, paged/scroll modes
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
+import Modal from "../components/Modal";
 import * as api from "../lib/api";
 import type { ChapterContent, BookDetail } from "../lib/api";
 import * as cache from "../lib/cache";
@@ -17,7 +18,11 @@ export default function ReaderPage() {
   const [error, setError] = useState("");
   const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem("rf") || 18));
   const [paged, setPaged] = useState(() => localStorage.getItem("rp") === "1");
-  const [showMenu, setShowMenu] = useState(false);
+  const [showToc, setShowToc] = useState(false);
+  const tocRef = useRef<HTMLButtonElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showHeader, setShowHeader] = useState(true);
+  const lastScrollTop = useRef(0);
   const [chapters, setChapters] = useState<{ id: string; title: string }[]>([]);
   const [bookMeta, setBookMeta] = useState<{ title: string; author: string; coverUrl: string } | null>(null);
   const [chIdx, setChIdx] = useState(-1);
@@ -108,13 +113,13 @@ export default function ReaderPage() {
   // Keyboard
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (showMenu) return;
+      if (showToc) return;
       if (e.key === "ArrowLeft" && chIdx > 0) goChapter(chapters[chIdx - 1].id);
       if (e.key === "ArrowRight" && chIdx >= 0 && chIdx < chapters.length - 1) goChapter(chapters[chIdx + 1].id);
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showMenu, chIdx, chapters, goChapter]);
+  }, [showToc, chIdx, chapters, goChapter]);
 
   const paragraphs = useMemo(() => content?.content.split("\n").filter(Boolean) || [], [content]);
 
@@ -205,6 +210,26 @@ export default function ReaderPage() {
   const hasPrevCh = chIdx > 0;
   const hasNextCh = chIdx >= 0 && chIdx < chapters.length - 1;
 
+  // Scroll to current chapter when TOC opens
+  useEffect(() => {
+    if (showToc) requestAnimationFrame(() => tocRef.current?.scrollIntoView({ block: "center" }));
+  }, [showToc]);
+
+  // Scroll listener for header hide/show
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const st = el.scrollTop;
+      if (st <= 0) { setShowHeader(true); lastScrollTop.current = st; return; }
+      if (st > lastScrollTop.current + 8) setShowHeader(false);
+      else if (st < lastScrollTop.current - 8) setShowHeader(true);
+      lastScrollTop.current = st;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [loading]);
+
   const nextPage = () => {
     if (paged && page < totalPages - 1) { setFlipDir("right"); setTimeout(() => { setPage(p => p + 1); setFlipDir(""); }, 150); return; }
     if (hasNextCh) goChapter(chapters[chIdx + 1].id);
@@ -242,7 +267,7 @@ export default function ReaderPage() {
     const y = e.clientY - rect.top;
     const h = rect.height;
     if (x > w * 0.25 && x < w * 0.75 && y > h * 0.2 && y < h * 0.8) {
-      setShowMenu(v => !v);
+      setShowHeader(v => !v);
     } else if (paged && x < w * 0.25) {
       prevPage();
     } else if (paged && x > w * 0.75) {
@@ -257,13 +282,16 @@ export default function ReaderPage() {
 
   return (
     <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`} style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      {/* Top status bar */}
-      <div className="h-1 bg-gray-700/20 dark:bg-gray-300/10">
-        <div className="h-full bg-[#2563eb] transition-all duration-300" style={{ width: `${chapters.length ? ((chIdx + 1) / chapters.length) * 100 : 0}%` }} />
+      {/* Sticky title bar */}
+      <div className={}>
+        <Link to={} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">← 返回</Link>
+        <span className="text-sm font-medium line-clamp-1 text-center mx-2 flex-1 min-w-0">{content?.title || chapterTitle}</span>
+        <button onClick={() => setShowToc(true)} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"} 目录</button>
       </div>
 
       {/* Reading area */}
-      <div className="flex-1 overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
+        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
         {paged ? (
           /* PAGED MODE with flip animation */
           <div className="h-full flex items-center px-4 overflow-hidden" style={{ paddingTop: 24, paddingBottom: 24, perspective: "1200px" }}>
@@ -297,36 +325,33 @@ export default function ReaderPage() {
       {/* Floating chapter indicator (paged mode) */}
       {paged && <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-gray-400 pointer-events-none">{chIdx + 1}/{chapters.length}</div>}
 
-      {/* Menu overlay */}
-      {showMenu && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/65 dark:bg-black/80" onClick={() => setShowMenu(false)}>
-          <div className="h-14 flex items-center justify-between px-4" onClick={e => e.stopPropagation()}>
-            <Link to={`/book/${site}/${bookId}`} className="text-white/80 text-sm" onClick={() => setShowMenu(false)}>← 目录</Link>
-            <span className="text-white/60 text-sm">{chIdx + 1}/{chapters.length}</span>
-            <button className="text-white/80 text-lg" onClick={() => setShowMenu(false)}>✕</button>
+      {/* TOC Modal */}
+      <Modal open={showToc} onClose={() => setShowToc(false)} title="目录">
+        <div className="space-y-4">
+          <div className="flex justify-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+            <button onClick={() => setPaged(false)} className={`px-4 py-1.5 rounded-full text-sm ${!paged ? "bg-[#2563eb] text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-500"}`}>滚动</button>
+            <button onClick={() => setPaged(true)} className={`px-4 py-1.5 rounded-full text-sm ${paged ? "bg-[#2563eb] text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-500"}`}>翻页</button>
           </div>
-          <div className="flex-1" onClick={() => setShowMenu(false)} />
-          <div className={`p-4 space-y-4 bg-gray-900/95 transition-transform duration-300 ${showMenu ? "translate-y-0" : "translate-y-full"}`} onClick={e => e.stopPropagation()}>
-            {/* Chapter nav */}
-            <div className="flex justify-between">
-              <button className="text-white/80 text-sm min-h-[44px] px-4" disabled={!hasPrevCh} onClick={() => { if (hasPrevCh) { goChapter(chapters[chIdx - 1].id); setShowMenu(false); } }}>← 上一章</button>
-              <button className="text-white/80 text-sm min-h-[44px] px-4" disabled={!hasNextCh} onClick={() => { if (hasNextCh) { goChapter(chapters[chIdx + 1].id); setShowMenu(false); } }}>下一章 →</button>
-            </div>
-            {/* Mode toggle */}
-            <div className="flex justify-center gap-2">
-              <button onClick={() => setPaged(false)} className={`px-4 py-1.5 rounded-full text-sm ${!paged ? "bg-[#2563eb] text-white" : "text-white/60"}`}>滚动</button>
-              <button onClick={() => setPaged(true)} className={`px-4 py-1.5 rounded-full text-sm ${paged ? "bg-[#2563eb] text-white" : "text-white/60"}`}>翻页</button>
-            </div>
-            {/* Font size */}
-            <div className="flex items-center justify-center gap-3">
-              <button onClick={() => setFontSize(s => Math.max(14, s - 2))} className="text-white/60 px-3 text-sm">A-</button>
-              <input type="range" min={14} max={28} value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="flex-1 max-w-[200px] accent-[#2563eb]" />
-              <button onClick={() => setFontSize(s => Math.min(28, s + 2))} className="text-white/60 px-3 text-sm">A+</button>
-            </div>
-            {/* Theme */}
+          <div className="flex items-center justify-center gap-3">
+            <button onClick={() => setFontSize(s => Math.max(14, s - 2))} className="text-gray-400 px-3 text-sm">A-</button>
+            <input type="range" min={14} max={28} value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="flex-1 max-w-[200px] accent-[#2563eb]" />
+            <button onClick={() => setFontSize(s => Math.min(28, s + 2))} className="text-gray-400 px-3 text-sm">A+</button>
+          </div>
+          <div className="max-h-96 overflow-y-auto space-y-1">
+            {chapters.map((ch, i) => (
+              <button
+                key={ch.id}
+                ref={i === chIdx ? tocRef : undefined}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${i === chIdx ? "bg-[#2563eb]/10 text-[#2563eb] font-medium border-l-2 border-[#2563eb]" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+                onClick={() => { goChapter(ch.id); setShowToc(false); }}
+              >
+                <span className="text-xs text-gray-400 mr-2">{i + 1}/{chapters.length}</span>
+                {ch.title}
+              </button>
+            ))}
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
