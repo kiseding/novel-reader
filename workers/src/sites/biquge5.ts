@@ -83,26 +83,15 @@ export class Biquge5Source implements SiteSource {
 
     collectChapters($);
 
-    // Follow pagination links to get all chapters
+    // Biquge5 uses index_N.html pagination (index_1.html, index_2.html, ...)
     for (let page = 1; page < 30; page++) {
-      // Try "下一页" link first, then index_N.html pattern
-      let nextUrl = "";
-      const nextLink = $(`a:contains("下一页"), a:contains("下一頁"), a:contains("▶")`).first();
-      const nextHref = nextLink.attr("href") || "";
-      if (nextHref) {
-        nextUrl = absolutizeURL(`${BASE}/${bookId}/`, nextHref);
-      } else {
-        // Try index_N.html pattern
-        const testUrl = `${BASE}/${bookId}/index_${page + 1}.html`;
-        nextUrl = testUrl;
-      }
-      if (!nextUrl.includes(bookId)) break;
+      const nextUrl = `${BASE}/${bookId}/index_${page}.html`;
       try {
         const pageHtml = await withRetry(() => fetchHTML(nextUrl));
         const page$ = parseHTML(pageHtml);
         const prevCount = allChapters.length;
         collectChapters(page$);
-        if (allChapters.length === prevCount) break; // no new chapters
+        if (allChapters.length === prevCount) break; // no new chapters = done
         $ = page$;
       } catch { break; }
     }
