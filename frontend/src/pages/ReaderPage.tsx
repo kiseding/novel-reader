@@ -267,17 +267,12 @@ export default function ReaderPage() {
   };
 
   const onTap = (e: React.MouseEvent) => {
-    if (touchedRef.current) return; // suppress click after touch swipe
+    if (touchedRef.current) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const w = rect.width;
-    const y = e.clientY - rect.top;
-    const h = rect.height;
-    if (paged && x < w * 0.25) {
-      prevPage();
-    } else if (paged && x > w * 0.75) {
-      nextPage();
-    }
+    if (paged && x < w * 0.25) prevPage();
+    else if (paged && x > w * 0.75) nextPage();
   };
 
   // Loading / Error states
