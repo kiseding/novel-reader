@@ -25,19 +25,25 @@ export default function BookDetailPage() {
   useEffect(() => {
     if (!site || !bookId) return;
     setLoading(true);
-    api.getBookDetail(site, bookId, chapterPage).then(setBook).catch(e => setError(e.message)).finally(() => setLoading(false));
-  }, [site, bookId, chapterPage]);
 
-  // Check bookshelf + cache status
-  useEffect(() => {
-    if (!user || !site || !bookId) return;
-    api.getBookshelf().then(res => {
-      const found = res.items.find((i: BookshelfItem) => i.site === site && i.book_id === bookId);
-      setInBookshelf(!!found);
-      setProgress(found && found.chapter_id ? { chapterId: found.chapter_id, chapterTitle: found.chapter_title } : null);
-    }).catch(() => {});
+    const promises: Promise<any>[] = [api.getBookDetail(site, bookId, chapterPage)];
+    if (user) promises.push(api.getBookshelf());
+
+    Promise.all(promises).then(([bookData, shelfData]) => {
+      setBook(bookData);
+      if (shelfData) {
+        const found = (shelfData as { items: BookshelfItem[] }).items.find(
+          (i: BookshelfItem) => i.site === site && i.book_id === bookId,
+        );
+        setInBookshelf(!!found);
+        if (found?.chapter_id) {
+          setProgress({ chapterId: found.chapter_id, chapterTitle: found.chapter_title });
+        }
+      }
+    }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    // Check cache status (no user required)
     window.caches.keys().then(keys => { setIsCached(keys.some(k => k.includes(`/cache/${site}/${bookId}/`))); }).catch(() => {});
-  }, [user, site, bookId]);
+  }, [site, bookId, chapterPage, user]);
 
   const toggleBookshelf = async () => {
     if (!user) { navigate("/login"); return; }
