@@ -110,7 +110,7 @@ export default function ReaderPage() {
     const h = (e: KeyboardEvent) => {
       if (showMenu) return;
       if (e.key === "ArrowLeft" && chIdx > 0) goChapter(chapters[chIdx - 1].id);
-      if (e.key === "ArrowRight" && chIdx < chapters.length - 1) goChapter(chapters[chIdx + 1].id);
+      if (e.key === "ArrowRight" && chIdx >= 0 && chIdx < chapters.length - 1) goChapter(chapters[chIdx + 1].id);
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -203,7 +203,7 @@ export default function ReaderPage() {
 
   const totalPages = computedPages.length;
   const hasPrevCh = chIdx > 0;
-  const hasNextCh = chIdx < chapters.length - 1;
+  const hasNextCh = chIdx >= 0 && chIdx < chapters.length - 1;
 
   const nextPage = () => {
     if (paged && page < totalPages - 1) { setFlipDir("right"); setTimeout(() => { setPage(p => p + 1); setFlipDir(""); }, 150); return; }
