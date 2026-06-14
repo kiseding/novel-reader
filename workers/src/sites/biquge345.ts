@@ -62,27 +62,57 @@ export class Biquge345Source implements SiteSource {
 
   async downloadPlan(bookId: string): Promise<BookDetail> {
     const html = await fetchHTML(`${BASE}/book/${bookId}/`);
-    const $ = parseHTML(html);
+    let $ = parseHTML(html);
 
     const title = cleanText($(".right_border h1").first().text());
     const author = cleanText($(".x1 a").first().text());
     const description = cleanText($(".x3").first().text());
     const coverUrl = absolutizeURL(BASE, $(".zhutu img").first().attr("src") || "");
 
-    const chapters = $(".info a").map((_, a) => {
-      const href = $(a).attr("href") || "";
-      const m = href.match(CHAPTER_RE);
-      if (!m) return null;
-      return {
-        id: m[2],
-        title: cleanText($(a).text()),
-        url: absolutizeURL(BASE, href),
-        order: 0,
-      };
-    }).get().filter(Boolean) as { id: string; title: string; url: string; order: number }[];
+    // Collect chapters from all paginated pages
+    const allChapters: { id: string; title: string; url: string; order: number }[] = [];
+    const seen = new Set<string>();
+    const seenBH = new Set<string>();
+
+    function collectChapters(_$: ReturnType<typeof parseHTML>) {
+      _$(".info a").each((_, a) => {
+        const href = $(a).attr("href") || "";
+        const m = href.match(CHAPTER_RE);
+        if (!m) return;
+        const key = m[2];
+        if (seen.has(key)) return;
+        seen.add(key);
+        const bh = m[1];
+        const isPrefixed = bh && bh !== bookId && !seenBH.has(bh + key);
+        if (isPrefixed) seenBH.add(bh + key);
+        allChapters.push({
+          id: key,
+          title: cleanText($(a).text()),
+          url: absolutizeURL(BASE, href),
+          order: 0,
+        });
+      });
+    }
+
+    collectChapters($);
+
+    // Follow pagination links to get all chapters
+    for (let page = 1; page < 30; page++) {
+      const nextLink = $(`a:contains("下一页"), a:contains("下一頁"), a.next:contains("▶")`).first();
+      const nextHref = nextLink.attr("href") || "";
+      if (!nextHref) break;
+      const nextUrl = absolutizeURL(`${BASE}/book/${bookId}/`, nextHref);
+      if (!nextUrl.includes(bookId)) break;
+      try {
+        const pageHtml = await fetchHTML(nextUrl);
+        const page$ = parseHTML(pageHtml);
+        collectChapters(page$);
+        $ = page$;
+      } catch { break; }
+    }
 
     // Ad removal markers
-    const filteredChapters = chapters.filter((ch) => {
+    const filteredChapters = allChapters.filter((ch) => {
       const t = ch.title;
       return !t.includes("biquge345") && !t.includes("笔趣阁");
     });
