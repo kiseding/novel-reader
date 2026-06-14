@@ -77,22 +77,26 @@ export class HaiwaishubaoSource implements SiteSource {
     const coverUrl = $('meta[property="og:image"]').attr("content") ||
       $(".BGsectionOne-top-left img").first().attr("src") || "";
 
-    // Paginated chapter list
-    const chapters: { id: string; title: string; url: string; order: number }[] = [];
-    for (let page = 1; page <= 50; page++) {
+    // Paginated chapter list with dedup
+    const allChapters: { id: string; title: string; url: string; order: number }[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= 30; page++) {
       try {
         const catHtml = await fetchHTML(this.catalogURL(bookId, page), {
           headers: { Referer: this.bookURL(bookId) },
         });
         const $cat = parseHTML(catHtml);
-        const pageChapters: { id: string; title: string; url: string; order: number }[] = [];
+        let found = 0;
         $cat(".BCsectionTwo-top a").each((_: number, a: any) => {
           const href = $(a).attr("href") || "";
           const m = href.match(CHAPTER_RE);
-          if (m) pageChapters.push({ id: m[2], title: cleanText($(a).text()), url: absolutizeURL(BASE, href), order: 0 });
+          if (!m) return;
+          if (seen.has(m[2])) return;
+          seen.add(m[2]);
+          found++;
+          allChapters.push({ id: m[2], title: cleanText($(a).text()), url: absolutizeURL(BASE, href), order: 0 });
         });
-        if (!pageChapters.length) break;
-        chapters.push(...pageChapters);
+        if (!found && page > 1) break;
         if (!catHtml.includes("下一页") && !catHtml.includes("下一頁")) break;
       } catch {
         if (page === 1) throw new Error("haiwaishubao 目录获取失败");
@@ -107,7 +111,7 @@ export class HaiwaishubaoSource implements SiteSource {
       description: description || "",
       coverUrl,
       sourceUrl: this.bookURL(bookId),
-      chapters: chapters.map((ch, i) => ({ ...ch, order: i + 1 })),
+      chapters: allChapters.map((ch, i) => ({ ...ch, order: i + 1 })),
     };
   }
 

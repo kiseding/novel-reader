@@ -56,7 +56,7 @@ export class Biquge5Source implements SiteSource {
 
   async downloadPlan(bookId: string): Promise<BookDetail> {
     const html = await withRetry(() => fetchHTML(`${BASE}/${bookId}/`));
-    const $ = parseHTML(html);
+    let $ = parseHTML(html);
     const [cat, id] = bookId.split("_");
 
     const title = $('meta[property="og:novel:book_name"]').attr("content") ||
@@ -65,16 +65,40 @@ export class Biquge5Source implements SiteSource {
     const description = $('meta[property="og:description"]').attr("content") || "";
     const coverUrl = $('meta[property="og:image"]').attr("content") || "";
 
-    const chapters: { id: string; title: string; url: string; order: number }[] = [];
+    // Collect chapters from all paginated pages
+    const allChapters: { id: string; title: string; url: string; order: number }[] = [];
+    const seen = new Set<string>();
     const re = new RegExp(`/${bookId}/(\\d+)\\.html$`);
-    $("a").each((_, a) => {
-      const href = $(a).attr("href") || "";
-      const m = href.match(re);
-      if (!m) return;
-      chapters.push({ id: m[1], title: cleanText($(a).text()), url: absolutizeURL(BASE, href), order: 0 });
-    });
 
-    return { site: this.key, bookId, title, author, description, coverUrl, sourceUrl: `${BASE}/${bookId}/`, chapters: chapters.map((ch, i) => ({ ...ch, order: i + 1 })) };
+    function collectChapters(_$: ReturnType<typeof parseHTML>) {
+      _$("a").each((_, a) => {
+        const href = $(a).attr("href") || "";
+        const m = href.match(re);
+        if (!m) return;
+        if (seen.has(m[1])) return;
+        seen.add(m[1]);
+        allChapters.push({ id: m[1], title: cleanText($(a).text()), url: absolutizeURL(BASE, href), order: 0 });
+      });
+    }
+
+    collectChapters($);
+
+    // Follow pagination links to get all chapters
+    for (let page = 1; page < 30; page++) {
+      const nextLink = $(`a:contains("下一页"), a:contains("下一頁")`).first();
+      const nextHref = nextLink.attr("href") || "";
+      if (!nextHref) break;
+      const nextUrl = absolutizeURL(`${BASE}/${bookId}/`, nextHref);
+      if (!nextUrl.includes(bookId)) break;
+      try {
+        const pageHtml = await withRetry(() => fetchHTML(nextUrl));
+        const page$ = parseHTML(pageHtml);
+        collectChapters(page$);
+        $ = page$;
+      } catch { break; }
+    }
+
+    return { site: this.key, bookId, title, author, description, coverUrl, sourceUrl: `${BASE}/${bookId}/`, chapters: allChapters.map((ch, i) => ({ ...ch, order: i + 1 })) };
   }
 
   async fetchChapter(bookId: string, chapter: { id: string; url: string; title: string }): Promise<ChapterContent> {
