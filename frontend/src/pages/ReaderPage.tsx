@@ -64,7 +64,14 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!site || !bookId) return;
     api.getBookDetail(site, bookId).then((b: BookDetail) => {
-      setChapters(b.chapters.map(ch => ({ id: ch.id, title: ch.title })));
+      const raw = b.chapters.map(ch => ({ id: ch.id, title: ch.title }));
+      // Auto-detect reverse order: if first chapter number > last, reverse for reading direction
+      if (raw.length > 1) {
+        const a = parseInt(raw[0].id.match(/\d+/)?.[0] || "0");
+        const b = parseInt(raw[raw.length - 1].id.match(/\d+/)?.[0] || "0");
+        if (a > b) raw.reverse();
+      }
+      setChapters(raw);
       setBookMeta({ title: b.title, author: b.author || "", coverUrl: b.coverUrl || "" });
     }).catch(() => {});
   }, [site, bookId]);
@@ -266,9 +273,7 @@ export default function ReaderPage() {
     const w = rect.width;
     const y = e.clientY - rect.top;
     const h = rect.height;
-    if (x > w * 0.25 && x < w * 0.75 && y > h * 0.2 && y < h * 0.8) {
-      setShowHeader(v => !v);
-    } else if (paged && x < w * 0.25) {
+    if (paged && x < w * 0.25) {
       prevPage();
     } else if (paged && x > w * 0.75) {
       nextPage();
@@ -291,7 +296,7 @@ export default function ReaderPage() {
 
       {/* Reading area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
-        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
+        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {paged ? (
           /* PAGED MODE with flip animation */
           <div className="h-full flex items-center px-4 overflow-hidden" style={{ paddingTop: 24, paddingBottom: 24, perspective: "1200px" }}>
