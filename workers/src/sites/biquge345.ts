@@ -98,15 +98,21 @@ export class Biquge345Source implements SiteSource {
 
     // Follow pagination links to get all chapters
     for (let page = 1; page < 30; page++) {
-      const nextLink = $(`a:contains("下一页"), a:contains("下一頁"), a.next:contains("▶")`).first();
+      let nextUrl = "";
+      const nextLink = $(`a:contains("下一页"), a:contains("下一頁"), a:contains("▶")`).first();
       const nextHref = nextLink.attr("href") || "";
-      if (!nextHref) break;
-      const nextUrl = absolutizeURL(`${BASE}/book/${bookId}/`, nextHref);
+      if (nextHref) {
+        nextUrl = absolutizeURL(`${BASE}/book/${bookId}/`, nextHref);
+      } else {
+        nextUrl = `${BASE}/book/${bookId}/index_${page + 1}.html`;
+      }
       if (!nextUrl.includes(bookId)) break;
       try {
         const pageHtml = await fetchHTML(nextUrl);
         const page$ = parseHTML(pageHtml);
+        const prevCount = allChapters.length;
         collectChapters(page$);
+        if (allChapters.length === prevCount) break;
         $ = page$;
       } catch { break; }
     }
