@@ -83,15 +83,21 @@ export class FsshuSource implements SiteSource {
 
     // Follow pagination links to get all chapters
     for (let page = 1; page < 30; page++) {
+      let nextUrl = "";
       const nextLink = $(`a:contains("下一页"), a:contains("下一頁")`).first();
       const nextHref = nextLink.attr("href") || "";
-      if (!nextHref) break;
-      const nextUrl = absolutizeURL(`${BASE}${PREFIX}/${bookId}/`, nextHref);
+      if (nextHref) {
+        nextUrl = absolutizeURL(`${BASE}${PREFIX}/${bookId}/`, nextHref);
+      } else {
+        nextUrl = `${BASE}${PREFIX}/${bookId}/index_${page + 1}.html`;
+      }
       if (!nextUrl.includes(bookId)) break;
       try {
         const pageHtml = await withRetry(() => fetchHTML(nextUrl));
         const page$ = parseHTML(pageHtml);
+        const prevCount = allChapters.length;
         collectChapters(page$);
+        if (allChapters.length === prevCount) break;
         $ = page$;
       } catch { break; }
     }
