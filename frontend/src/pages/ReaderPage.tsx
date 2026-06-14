@@ -59,7 +59,7 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!site || !bookId) return;
     api.getBookDetail(site, bookId).then((b: BookDetail) => {
-      setChapters(b.chapters.map(ch => ({ id: ch.id, title: ch.title })).reverse());
+      setChapters(b.chapters.map(ch => ({ id: ch.id, title: ch.title })));
       setBookMeta({ title: b.title, author: b.author || "", coverUrl: b.coverUrl || "" });
     }).catch(() => {});
   }, [site, bookId]);
