@@ -248,11 +248,12 @@ export default function ReaderPage() {
 
   // Swipe detection
   const onTouchStart = (e: React.TouchEvent) => {
+    if (!paged) return;
     const t = e.touches[0];
     touchStart.current = { x: t.clientX, y: t.clientY, t: Date.now() };
   };
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart.current) return;
+    if (!paged || !touchStart.current) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - touchStart.current.x;
     const dy = t.clientY - touchStart.current.y;
