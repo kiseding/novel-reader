@@ -1,5 +1,5 @@
 // Mobile-first reader with swipe gestures, paged/scroll modes
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
 import Modal from "../components/Modal";
 import * as api from "../lib/api";
@@ -30,6 +30,8 @@ export default function ReaderPage() {
   const [winH, setWinH] = useState(() => window.innerHeight);
   const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
   const touchedRef = useRef(false); // suppress click after touch swipe
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+  const [contentAreaH, setContentAreaH] = useState(0);
 
   // Window resize
   useEffect(() => {
@@ -129,19 +131,26 @@ export default function ReaderPage() {
 
   const paragraphs = useMemo(() => content?.content.split("\n").filter(Boolean) || [], [content]);
 
+  // Measure actual available height for pagination (accounts for safe-area, header, padding)
+  useLayoutEffect(() => {
+    if (paged && contentAreaRef.current) {
+      const h = contentAreaRef.current.clientHeight;
+      if (h > 0) setContentAreaH(h);
+    }
+  }, [paged, showHeader, content, fontSize]);
+
   const computedPages = useMemo<string[][]>(() => {
     if (!paged || winH < 300 || !paragraphs.length) {
       return [paragraphs];
     }
-    const lineHeight = fontSize * 1.8;
-    const contentH = winH - 180;
-    const linesPerPage = Math.max(1, Math.floor(contentH / lineHeight));
+    const availH = contentAreaH > 0 ? contentAreaH : winH - 200;
+    const linesPerPage = Math.max(1, Math.floor(availH / (fontSize * 1.8)));
     const pages: string[][] = [];
     for (let i = 0; i < paragraphs.length; i += linesPerPage) {
       pages.push(paragraphs.slice(i, i + linesPerPage));
     }
     return pages.length > 0 ? pages : [paragraphs];
-  }, [paragraphs, fontSize, winH, paged]);
+  }, [paragraphs, fontSize, winH, paged, contentAreaH]);
 
   const totalPages = computedPages.length;
   const hasPrevCh = chIdx > 0;
@@ -226,9 +235,9 @@ export default function ReaderPage() {
         onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
         {paged ? (
           <div className="h-full flex flex-col px-4" style={{ paddingTop: 24, paddingBottom: 24 }}>
-            <div className="flex-1 overflow-hidden">
+            {content.title && page === 0 && <h1 className="text-center font-bold mb-6 shrink-0" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
+            <div ref={contentAreaRef} className="flex-1 overflow-hidden">
               <div className="max-w-[800px] mx-auto">
-                {content.title && page === 0 && <h1 className="text-center font-bold mb-6" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
                 <div style={{ fontSize, lineHeight: 1.8 }}>
                   {(computedPages[page] || []).map((line, i) => <p key={i} className="indent-8" style={{ fontSize, marginBottom: fontSize * 0.5 }}>{line}</p>)}
                 </div>
