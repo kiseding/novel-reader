@@ -6,10 +6,8 @@ export type { SearchResult };
 
 import { Biquge345Source } from "./biquge345";
 import { Biquge5Source } from "./biquge5";
-import { AaatxtSource } from "./aaatxt";
 import { Ixdzs8Source } from "./ixdzs8";
 import { FsshuSource } from "./fsshu";
-import { HaiwaishubaoSource } from "./haiwaishubao";
 import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
 
 export interface SourceMeta {
@@ -27,10 +25,8 @@ export class SiteRegistry {
     const list: SiteSource[] = [
       new Biquge345Source(),
       new Biquge5Source(),
-      new AaatxtSource(),
       new Ixdzs8Source(),
       new FsshuSource(),
-      new HaiwaishubaoSource(),
     ];
     this.sources = new Map();
     this.meta = [];
