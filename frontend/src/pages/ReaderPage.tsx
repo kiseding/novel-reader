@@ -226,7 +226,7 @@ export default function ReaderPage() {
         onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
         {paged ? (
           <div className="h-full flex flex-col px-4" style={{ paddingTop: 24, paddingBottom: 24 }}>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-hidden">
               <div className="max-w-[800px] mx-auto">
                 {content.title && page === 0 && <h1 className="text-center font-bold mb-6" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
                 <div style={{ fontSize, lineHeight: 1.8 }}>
