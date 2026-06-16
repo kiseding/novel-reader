@@ -1,12 +1,3 @@
-// Regex for Chinese chapter numbers: 一~十, 百, 千 + Arabic digits
-const CH_NUM = /第\s*[一二三四五六七八九十百千万零\d]+\s*章/;
-const CH_NUM_LINE = new RegExp('^' + CH_NUM.source + '[^\n]*\n?', 'm');
-
-// Extract pure title text from a raw first line like "第一章 仙子的修行-《书名》"
-function extractTitleFromLine(line: string): string {
-  return line.replace(/[《「].*[》」]/g, '').replace(/[-—–]\s*$/g, '').trim();
-}
-
 // Chapter content cleaner — strips source site UI noise + duplicate title
 export function cleanChapterContent(raw: string, title?: string): string {
   let text = raw;
@@ -78,9 +69,4 @@ export function cleanChapterContent(raw: string, title?: string): string {
   return text.trim();
 }
 
-// Detect and extract multi-page indicators like "第(1/3)页"
-export function hasNextPage(html: string): boolean {
-  return /第\s*[\(（]?\s*\d+\s*\/\s*\d+\s*[\)）]?\s*页/.test(html) ||
-    /下一页|下一頁|next page/i.test(html) ||
-    /_\d+\.html/.test(html);
-}
+

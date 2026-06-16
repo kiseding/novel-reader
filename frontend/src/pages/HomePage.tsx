@@ -16,7 +16,7 @@ function scoreResult(item: SearchItem, keyword: string): number {
   return c * 5;
 }
 
-// pinyin slugs picked to match common biquge/fsshu category paths
+// Numeric category IDs matching biquge5 /list{N}/ paths
 const TAGS: Array<{ label: string; slug: string }> = [
   { label: "玄幻", slug: "1" },
   { label: "武侠", slug: "2" },

@@ -1,7 +1,6 @@
 // Ported from go-novel-dl internal/site/biquge345.go
 import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL } from "../types";
 import { fetchHTML, postFormHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
-import * as cheerio from "cheerio";
 
 const BASE = "https://www.biquge345.com";
 const BOOK_RE = /^\/book\/(\d+)\/?$/;

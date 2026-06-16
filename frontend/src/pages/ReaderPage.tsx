@@ -185,8 +185,6 @@ export default function ReaderPage() {
     if (showToc) requestAnimationFrame(() => tocRef.current?.scrollIntoView({ block: "center" }));
   }, [showToc]);
 
-
-
   const nextPage = () => {
     if (paged && page < totalPages - 1) { setPage(p => p + 1); return; }
     if (hasNextCh) goChapter(chapters[chIdx + 1].id);

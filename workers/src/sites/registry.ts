@@ -1,4 +1,4 @@
-// Site source registry — 6 verified-working 转载站
+// Site source registry — 4 verified-working 转载站
 import type { SiteSource, SearchResult, BookDetail } from "../types";
 
 // Re-export SearchResult for the homepage
