@@ -1,0 +1,36 @@
+name: Sync All Forks
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-forks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync every fork from upstream
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -e
+          gh repo list kiseding --fork --limit 200 --json name,parent |
+            jq -r '.[] | select(.parent != null) | "\(.name) \(.parent.owner.login)/\(.parent.name)"' |
+            while read -r repo upstream; do
+              echo "=== $repo ← $upstream ==="
+              rm -rf /tmp/repo
+              git clone "https://kiseding:${GH_TOKEN}@github.com/kiseding/${repo}.git" /tmp/repo
+              cd /tmp/repo
+              git remote add upstream "https://github.com/${upstream}.git"
+              git fetch upstream --quiet
+              UP_BRANCH=$(git remote show upstream 2>/dev/null | grep "HEAD branch" | awk '{print $NF}')
+              [ -z "$UP_BRANCH" ] && UP_BRANCH="main"
+              MERGE_BRANCH="${UP_BRANCH}"
+              if ! git merge "upstream/${UP_BRANCH}" --no-edit 2>/dev/null; then
+                echo "⚠️  Merge conflict in $repo, skipping"
+                continue
+              fi
+              git push origin "HEAD:${MERGE_BRANCH}" --quiet
+              echo "✅ $repo synced"
+            done
