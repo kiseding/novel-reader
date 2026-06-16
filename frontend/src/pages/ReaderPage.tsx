@@ -143,8 +143,9 @@ export default function ReaderPage() {
     if (!paged || winH < 300 || !paragraphs.length) {
       return [paragraphs];
     }
+    const lineH = fontSize * (1.8 + 0.5);
     const availH = contentAreaH > 0 ? contentAreaH : winH - 200;
-    const linesPerPage = Math.max(1, Math.floor(availH / (fontSize * 1.8)));
+    const linesPerPage = Math.max(1, Math.floor(availH / lineH));
     const pages: string[][] = [];
     for (let i = 0; i < paragraphs.length; i += linesPerPage) {
       pages.push(paragraphs.slice(i, i + linesPerPage));
