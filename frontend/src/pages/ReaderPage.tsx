@@ -113,6 +113,7 @@ export default function ReaderPage() {
   const goChapter = useCallback((id: string) => {
     const ch = chapters.find(c => c.id === id);
     if (!ch) return;
+    setContent(null);
     navigate(`/read/${site}/${bookId}/${id}?title=${encodeURIComponent(ch.title)}&url=`);
     setPage(0);
   }, [site, bookId, chapters, navigate]);
@@ -240,10 +241,11 @@ export default function ReaderPage() {
     else if (paged && x > w * 0.75) nextPage();
   };
 
-  // Loading / Error states
-  if (loading) return <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex items-center justify-center`}><div className="animate-spin rounded-full h-8 w-8 border-2 border-[#2563eb] border-t-transparent" /></div>;
+  function Spinner() {
+    return <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex items-center justify-center`}><div className="animate-spin rounded-full h-8 w-8 border-2 border-[#2563eb] border-t-transparent" /></div>;
+  }
+  if (loading || !content) return <Spinner />;
   if (error) return <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex items-center justify-center`}><div className="text-center"><p className="text-red-500 mb-4">{error}</p><button onClick={() => navigate(-1)} className="btn-ghost">返回</button></div></div>;
-  if (!content) return null;
 
   return (
     <div ref={outerRef} className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`}
