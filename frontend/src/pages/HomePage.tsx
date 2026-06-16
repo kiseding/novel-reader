@@ -18,13 +18,13 @@ function scoreResult(item: SearchItem, keyword: string): number {
 
 // pinyin slugs picked to match common biquge/fsshu category paths
 const TAGS: Array<{ label: string; slug: string }> = [
-  { label: "玄幻", slug: "xuanhuan" },
-  { label: "都市", slug: "dushi" },
-  { label: "修真", slug: "xiuzhen" },
-  { label: "历史", slug: "lishi" },
-  { label: "网游", slug: "wangyou" },
-  { label: "科幻", slug: "kehuan" },
-  { label: "言情", slug: "yanqing" },
+  { label: "玄幻", slug: "1" },
+  { label: "武侠", slug: "2" },
+  { label: "都市", slug: "3" },
+  { label: "历史", slug: "4" },
+  { label: "网游", slug: "5" },
+  { label: "科幻", slug: "6" },
+  { label: "言情", slug: "7" },
 ];
 
 // Stable per-mount shuffle so books don't re-order on each render.

@@ -126,12 +126,12 @@ export class SiteRegistry {
       {
         key: "biquge5",
         base: "https://www.biquge5.com",
-        templates: [`/sort/${slug}/`, `/sort/${slug}_1/`, `/${slug}/`, `/list/${slug}/`, `/${slug}_1/`],
+        templates: [`/list${slug}/`],
       },
       {
         key: "fsshu",
         base: "https://www.fsshu.com",
-        templates: [`/sort/${slug}/`, `/sort/${slug}_1/`, `/${slug}/`, `/list/${slug}/`],
+        templates: [`/list${slug}/`],
       },
     ];
 

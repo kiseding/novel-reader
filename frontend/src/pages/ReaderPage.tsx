@@ -130,87 +130,18 @@ export default function ReaderPage() {
 
   const paragraphs = useMemo(() => content?.content.split("\n").filter(Boolean) || [], [content]);
 
-  // Paged mode: split paragraphs across pages; allow mid-paragraph cuts.
-  const computedPages = useMemo<Array<Array<{ text: string; indent: boolean }>>>(() => {
+  const computedPages = useMemo<string[][]>(() => {
     if (!paged || winH < 300 || !paragraphs.length) {
-      return [paragraphs.map(p => ({ text: p, indent: true }))];
+      return [paragraphs];
     }
-
-    const containerW = Math.min(window.innerWidth - 32, 800);
-    const cjkW = fontSize;
-    const latinW = fontSize * 0.55;
-    const charW = (ch: string) => {
-      const code = ch.charCodeAt(0);
-      if ((code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3000 && code <= 0x303f) || (code >= 0xff00 && code <= 0xffef) || ch === '　') return cjkW;
-      return latinW;
-    };
-
-    const lh = fontSize * 1.8;
-    const contentH = winH - 80;
-    const linesPerPage = Math.max(1, Math.floor(contentH / lh));
-    const indentW = fontSize * 2;
-
-    const linesNeeded = (text: string, hasIndent: boolean): number => {
-      let total = 0;
-      for (const ch of text) total += charW(ch);
-      if (total === 0) return 1;
-      const firstW = hasIndent ? containerW - indentW : containerW;
-      if (total <= firstW) return 1;
-      return 1 + Math.ceil((total - firstW) / containerW);
-    };
-
-    // Greedy fit: pack chars into `availLines` lines, return [fitted, rest].
-    const fitChars = (text: string, availLines: number, hasIndent: boolean): [string, string] => {
-      const firstW = hasIndent ? containerW - indentW : containerW;
-      let consumed = 0;
-      let lineIdx = 0;
-      let lineCap = firstW;
-      for (let i = 0; i < text.length; i++) {
-        const w = charW(text[i]);
-        if (consumed + w > lineCap) {
-          lineIdx++;
-          if (lineIdx >= availLines) return [text.slice(0, i), text.slice(i)];
-          consumed = w;
-          lineCap = containerW;
-        } else {
-          consumed += w;
-        }
-      }
-      return [text, ""];
-    };
-
-    const pages: Array<Array<{ text: string; indent: boolean }>> = [];
-    let curPage: Array<{ text: string; indent: boolean }> = [];
-    let curLines = 0;
-
-    const flush = () => { pages.push(curPage); curPage = []; curLines = 0; };
-
-    for (let pi = 0; pi < paragraphs.length; pi++) {
-      let remaining = paragraphs[pi];
-      let firstFrag = true;
-      while (remaining.length > 0) {
-        const avail = linesPerPage - curLines;
-        if (avail <= 0) { flush(); continue; }
-        const need = linesNeeded(remaining, firstFrag);
-        if (need <= avail) {
-          curPage.push({ text: remaining, indent: firstFrag });
-          curLines += need;
-          remaining = "";
-        } else {
-          const [fit, rest] = fitChars(remaining, avail, firstFrag);
-          if (!fit) { flush(); continue; }
-          curPage.push({ text: fit, indent: firstFrag });
-          flush();
-          remaining = rest;
-          firstFrag = false;
-        }
-      }
-      // Paragraph spacing: count one extra line gap, but only if more content fits.
-      if (curLines > 0 && curLines < linesPerPage) curLines += 1;
+    const lineHeight = fontSize * 1.8;
+    const contentH = winH - 180;
+    const linesPerPage = Math.max(1, Math.floor(contentH / lineHeight));
+    const pages: string[][] = [];
+    for (let i = 0; i < paragraphs.length; i += linesPerPage) {
+      pages.push(paragraphs.slice(i, i + linesPerPage));
     }
-
-    if (curPage.length > 0) flush();
-    return pages.length > 0 ? pages : [paragraphs.map(p => ({ text: p, indent: true }))];
+    return pages.length > 0 ? pages : [paragraphs];
   }, [paragraphs, fontSize, winH, paged]);
 
   const totalPages = computedPages.length;
@@ -292,17 +223,30 @@ export default function ReaderPage() {
 
       {/* Reading area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
-        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
         {paged ? (
-          /* PAGED MODE with flip animation */
-          <div className="h-full flex items-center px-4 overflow-hidden" style={{ paddingTop: 24, paddingBottom: 24, perspective: "1200px" }}>
-            <div className={`w-full max-w-[800px] mx-auto transition-all duration-200 ${flipDir === "right" ? "opacity-0 -translate-x-8 rotate-y-12" : flipDir === "left" ? "opacity-0 translate-x-8 -rotate-y-12" : "opacity-100"}`}>
-              {content.title && page === 0 && <h1 className="text-center font-bold mb-6" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
-              <div style={{ fontSize, lineHeight: 1.8 }}>
-                {(computedPages[page] || []).map((frag, i) => <p key={i} className={frag.indent ? "indent-8" : ""} style={{ fontSize, marginBottom: fontSize * 0.5 }}>{frag.text}</p>)}
+          <div className="h-full flex flex-col px-4 overflow-hidden" style={{ paddingTop: 24, paddingBottom: 24, perspective: "1200px" }}>
+            <div className="flex-1 flex items-center overflow-hidden">
+              <div className={`w-full max-w-[800px] mx-auto transition-all duration-300`}
+                style={{
+                  opacity: flipDir ? 0.9 : 1,
+                  transform: flipDir === "right" ? "perspective(1200px) rotateY(-22deg)" : flipDir === "left" ? "perspective(1200px) rotateY(22deg)" : "perspective(1200px) rotateY(0deg)",
+                  transformOrigin: flipDir === "right" ? "left center" : flipDir === "left" ? "right center" : "center center",
+                }}>
+                {content.title && page === 0 && <h1 className="text-center font-bold mb-6" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
+                <div style={{ fontSize, lineHeight: 1.8 }}>
+                  {(computedPages[page] || []).map((line, i) => <p key={i} className="indent-8" style={{ fontSize, marginBottom: fontSize * 0.5 }}>{line}</p>)}
+                </div>
               </div>
-              {totalPages > 1 && <div className="text-center text-xs text-gray-400 mt-4">{page + 1}/{totalPages}</div>}
             </div>
+            {/* Chapter nav for paged mode */}
+            {chapters.length > 0 && page === totalPages - 1 && (
+              <div className="flex justify-between mt-2 shrink-0">
+                <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasPrevCh} onClick={() => { if (chapters[chIdx - 1]) goChapter(chapters[chIdx - 1].id); }}>← 上一章</button>
+                <span className="text-sm text-gray-400 self-center">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"}</span>
+                <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasNextCh} onClick={() => { if (chapters[chIdx + 1]) goChapter(chapters[chIdx + 1].id); }}>下一章 →</button>
+              </div>
+            )}
           </div>
         ) : (
           /* SCROLL MODE */
