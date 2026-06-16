@@ -48,7 +48,7 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!site || !bookId || !chapterId) return;
     let stale = false;
-    setLoading(true); setError(""); setPage(0);
+    setLoading(true); setError(""); setPage(0); setMeasuredPages([]);
     const ck = cache.chapterCacheKey(site, bookId, chapterId);
     cache.getCachedChapter(ck).then(c => {
       if (stale) return;
