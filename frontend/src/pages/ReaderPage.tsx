@@ -1,5 +1,5 @@
 // Mobile-first reader with swipe gestures, paged/scroll modes
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
 import Modal from "../components/Modal";
 import * as api from "../lib/api";
@@ -31,6 +31,7 @@ export default function ReaderPage() {
   const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
   const touchedRef = useRef(false); // suppress click after touch swipe
   const outerRef = useRef<HTMLDivElement>(null);
+  const [measuredPages, setMeasuredPages] = useState<string[][]>([]);
 
   // Window resize
   useEffect(() => {
@@ -130,34 +131,51 @@ export default function ReaderPage() {
 
   const paragraphs = useMemo(() => content?.content.split("\n").filter(Boolean) || [], [content]);
 
-  // Compute available content height in paged mode (safe-area + header + padding)
-  const pagedAvailH = useMemo(() => {
-    if (!paged) return 0;
-    let paddingTop = 0, paddingBottom = 0;
-    if (outerRef.current) {
-      const s = getComputedStyle(outerRef.current);
-      paddingTop = parseFloat(s.paddingTop) || 0;
-      paddingBottom = parseFloat(s.paddingBottom) || 0;
+  // Measure-based pagination: add lines one-by-one to a hidden DOM element,
+  // check scrollHeight vs available height, backtrack when overflow.
+  useLayoutEffect(() => {
+    if (!paged || !paragraphs.length || !outerRef.current) {
+      setMeasuredPages([paragraphs]); return;
     }
-    const headerH = showHeader ? 52 : 0;
-    const contentPad = 48; // 24px top + 24px bottom in the paged container
-    return winH - paddingTop - paddingBottom - headerH - contentPad;
-  }, [paged, showHeader, winH]);
+    const s = getComputedStyle(outerRef.current);
+    const paddingTop = parseFloat(s.paddingTop) || 0;
+    const paddingBottom = parseFloat(s.paddingBottom) || 0;
+    const headerEl = outerRef.current.querySelector('.z-40') as HTMLElement | null;
+    const headerH = showHeader && headerEl ? headerEl.offsetHeight : 0;
+    const availH = winH - paddingTop - paddingBottom - headerH - 48;
+    if (availH <= 0) { setMeasuredPages([paragraphs]); return; }
 
-  const computedPages = useMemo<string[][]>(() => {
-    if (!paged || winH < 300 || !paragraphs.length) {
-      return [paragraphs];
-    }
-    const titleH = content?.title ? (fontSize + 6) * 1.8 + 24 : 0;
-    const lineH = fontSize * (1.8 + 0.5);
-    const linesPerPage = Math.max(1, Math.floor(((pagedAvailH || winH - 200) - titleH) / lineH));
+    const contentW = Math.min(800, winH - 32);
+    const measure = document.createElement('div');
+    measure.style.cssText = `position:absolute;left:-9999px;top:0;width:${contentW}px;font-size:${fontSize}px;line-height:1.8;visibility:hidden;pointer-events:none;`;
+    document.body.appendChild(measure);
+
     const pages: string[][] = [];
-    for (let i = 0; i < paragraphs.length; i += linesPerPage) {
-      pages.push(paragraphs.slice(i, i + linesPerPage));
+    let cur: string[] = [];
+    for (const line of paragraphs) {
+      const p = document.createElement('p');
+      p.textContent = line;
+      p.style.cssText = `text-indent:2rem;margin:0 0 ${fontSize * 0.5}px;font-size:${fontSize}px;line-height:1.8;`;
+      measure.appendChild(p);
+      if (measure.scrollHeight > availH && cur.length > 0) {
+        measure.removeChild(p);
+        pages.push(cur);
+        cur = [line];
+        measure.innerHTML = '';
+        const np = document.createElement('p');
+        np.textContent = line;
+        np.style.cssText = p.style.cssText;
+        measure.appendChild(np);
+      } else {
+        cur.push(line);
+      }
     }
-    return pages.length > 0 ? pages : [paragraphs];
-  }, [paragraphs, fontSize, winH, paged, pagedAvailH]);
+    if (cur.length) pages.push(cur);
+    document.body.removeChild(measure);
+    setMeasuredPages(pages.length > 0 ? pages : [paragraphs]);
+  }, [paged, paragraphs, fontSize, showHeader, winH]);
 
+  const computedPages = measuredPages.length > 0 ? measuredPages : [paragraphs];
   const totalPages = computedPages.length;
   const hasPrevCh = chIdx > 0;
   const hasNextCh = chIdx >= 0 && chIdx < chapters.length - 1;
