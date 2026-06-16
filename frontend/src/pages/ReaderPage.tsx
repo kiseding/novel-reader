@@ -28,7 +28,6 @@ export default function ReaderPage() {
   const [chIdx, setChIdx] = useState(-1);
   const [page, setPage] = useState(0);
   const [winH, setWinH] = useState(() => window.innerHeight);
-  const [flipDir, setFlipDir] = useState<"" | "left" | "right">("");
   const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
   const touchedRef = useRef(false); // suppress click after touch swipe
 
@@ -169,11 +168,11 @@ export default function ReaderPage() {
   }, [loading]);
 
   const nextPage = () => {
-    if (paged && page < totalPages - 1) { setFlipDir("right"); setTimeout(() => { setPage(p => p + 1); setFlipDir(""); }, 350); return; }
+    if (paged && page < totalPages - 1) { setPage(p => p + 1); return; }
     if (hasNextCh) goChapter(chapters[chIdx + 1].id);
   };
   const prevPage = () => {
-    if (paged && page > 0) { setFlipDir("left"); setTimeout(() => { setPage(p => p - 1); setFlipDir(""); }, 350); return; }
+    if (paged && page > 0) { setPage(p => p - 1); return; }
     if (hasPrevCh) goChapter(chapters[chIdx - 1].id);
   };
 
@@ -213,43 +212,28 @@ export default function ReaderPage() {
   if (!content) return null;
 
   return (
-    <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`}>
+    <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`}
+      style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       {/* Title bar — collapses to 0 height when hidden so reading area fills the screen */}
-      <div className={`z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700 transition-all duration-300 overflow-hidden ${showHeader ? "max-h-14 py-1.5 opacity-100" : "max-h-0 py-0 opacity-0"}`}
-        style={{ paddingTop: "env(safe-area-inset-top)" }}>
+      <div className={`z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700 transition-all duration-300 overflow-hidden ${showHeader ? "max-h-14 py-1.5 opacity-100" : "max-h-0 py-0 opacity-0"}`}>
         <Link to={`/book/${site}/${bookId}`} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">← 返回</Link>
         <span className="text-sm font-medium line-clamp-1 text-center mx-2 flex-1 min-w-0">{content?.title || chapterTitle}</span>
         <button onClick={() => setShowToc(true)} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"} 目录</button>
       </div>
 
       {/* Reading area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
+      <div ref={scrollRef} className={`flex-1 ${paged ? "overflow-hidden" : "overflow-y-auto"} overscroll-contain ${paged ? "" : "touch-pan-y"}`} style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
         onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
         {paged ? (
-          <div className="h-full flex flex-col px-4 overflow-hidden" style={{ paddingTop: 24, paddingBottom: 24, perspective: "1200px" }}>
-            <div className="flex-1 flex items-center overflow-hidden" style={{ perspective: "800px" }}>
-              <div className={`w-full max-w-[800px] mx-auto transition-all`}
-                style={{
-                  transitionDuration: "350ms",
-                  transform: flipDir === "right"
-                    ? "perspective(800px) rotateY(-18deg) translateX(-10px) scaleX(0.97)"
-                    : flipDir === "left"
-                    ? "perspective(800px) rotateY(18deg) translateX(10px) scaleX(0.97)"
-                    : "perspective(800px) rotateY(0deg) translateX(0px) scaleX(1)",
-                  transformOrigin: flipDir === "right" ? "left center" : flipDir === "left" ? "right center" : "center center",
-                  boxShadow: flipDir === "right"
-                    ? "-6px 0 16px rgba(0,0,0,0.12)"
-                    : flipDir === "left"
-                    ? "6px 0 16px rgba(0,0,0,0.12)"
-                    : "none",
-                }}>
+          <div className="h-full flex flex-col px-4" style={{ paddingTop: 24, paddingBottom: 24 }}>
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-[800px] mx-auto">
                 {content.title && page === 0 && <h1 className="text-center font-bold mb-6" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
                 <div style={{ fontSize, lineHeight: 1.8 }}>
                   {(computedPages[page] || []).map((line, i) => <p key={i} className="indent-8" style={{ fontSize, marginBottom: fontSize * 0.5 }}>{line}</p>)}
                 </div>
               </div>
             </div>
-            {/* Chapter nav for paged mode */}
             {chapters.length > 0 && page === totalPages - 1 && (
               <div className="flex justify-between mt-2 shrink-0">
                 <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasPrevCh} onClick={() => { if (chapters[chIdx - 1]) goChapter(chapters[chIdx - 1].id); }}>← 上一章</button>
@@ -259,14 +243,13 @@ export default function ReaderPage() {
             )}
           </div>
         ) : (
-          /* SCROLL MODE */
-          <div className="h-full overflow-y-auto overscroll-contain px-4" style={{ WebkitOverflowScrolling: "touch" }}>
+          /* SCROLL MODE — scrollRef handles all scrolling, no nested scroll container */
+          <div className="px-4 pb-4">
             <div className="max-w-[800px] mx-auto py-8">
               {content.title && <h1 className="text-center font-bold mb-8" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
               <div style={{ fontSize, lineHeight: 1.8 }}>
                 {paragraphs.map((p, i) => <p key={i} className="indent-8" style={{ fontSize, marginBottom: fontSize * 0.6 }}>{p}</p>)}
               </div>
-              {/* Chapter nav at end */}
               {chapters.length > 0 && <div className="flex justify-between mt-12 mb-8">
                 <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasPrevCh} onClick={() => { if (chapters[chIdx - 1]) goChapter(chapters[chIdx - 1].id); }}>← 上一章</button>
                 <span className="text-sm text-gray-400 self-center">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"}</span>
