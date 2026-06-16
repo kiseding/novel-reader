@@ -116,62 +116,44 @@ export class SiteRegistry {
     return books.slice(0, 30);
   }
 
-  // Category ranking — try a small set of URL templates per source. Sources
-  // may use different paths; we try common patterns and dedupe across what
-  // responds. Falls back to homepage on total failure.
+  // Category books — scrape /top/ ranking page which has [`玄幻`] category markers,
+  // then filter by category name. Much more reliable than per-category pages.
+  private CAT_NAMES: Record<string, string> = {
+    "1": "玄幻", "2": "武侠", "3": "都市", "4": "历史",
+    "5": "网游", "6": "科幻", "7": "言情",
+  };
+
   async getCategoryBooks(slug: string): Promise<SearchResult[]> {
+    const catName = this.CAT_NAMES[slug];
+    if (!catName) return this.getHomepageBooks();
+
     const books: SearchResult[] = [];
     const seen = new Set<string>();
-    const sites: Array<{ key: string; base: string; templates: string[] }> = [
-      {
-        key: "biquge5",
-        base: "https://www.biquge5.com",
-        templates: [`/list${slug}/`],
-      },
-      {
-        key: "fsshu",
-        base: "https://www.fsshu.com",
-        templates: [`/list${slug}/`],
-      },
-    ];
-
-    for (const site of sites) {
-      if (books.length >= 30) break;
-      for (const tmpl of site.templates) {
-        if (books.length >= 30) break;
-        try {
-          const html = await fetchHTML(site.base + tmpl);
-          const $ = parseHTML(html);
-          let pageHits = 0;
-          $("a").each((_, a) => {
-            if (books.length >= 30) return false;
-            const href = $(a).attr("href") || "";
-            const m = href.match(/^\/(\d+_\d+)\/?$/);
-            if (!m) return;
-            const bookId = m[1];
-            if (seen.has(bookId)) return;
-            seen.add(bookId);
-            const title = cleanText($(a).attr("title") || $(a).text())
-              .replace(/^\[[^\]]+\]\s*/, "").replace(/\s*全文阅读$/, "").trim();
-            if (!title) return;
-            const [cat, id] = bookId.split("_");
-            books.push({
-              site: site.key,
-              bookId,
-              title,
-              author: "",
-              description: "",
-              url: site.base + href,
-              coverUrl: `${site.base}/images/${cat}/${id}/${id}s.jpg`,
-              latestChapter: "",
-            });
-            pageHits++;
-          });
-          if (pageHits > 0) break;
-        } catch {}
-      }
-    }
-
+    try {
+      const html = await fetchHTML("https://www.biquge5.com/top/");
+      const $ = parseHTML(html);
+      $("a").each((_, a) => {
+        if (books.length >= 30) return false;
+        const href = $(a).attr("href") || "";
+        const m = href.match(/^\/(\d+_\d+)\/?$/);
+        if (!m) return;
+        const bookId = m[1];
+        if (seen.has(bookId)) return;
+        seen.add(bookId);
+        const raw = cleanText($(a).attr("title") || $(a).text());
+        const catMatch = raw.match(/^\[([^\]]+)\]/);
+        if (!catMatch || catMatch[1] !== catName) return;
+        const title = raw.replace(/^\[[^\]]+\]\s*/, "").replace(/\s*全文阅读$/, "").trim();
+        if (!title) return;
+        const [cat, id] = bookId.split("_");
+        books.push({
+          site: "biquge5", bookId, title, author: "", description: "",
+          url: `https://www.biquge5.com/${bookId}/`,
+          coverUrl: `https://www.biquge5.com/images/${cat}/${id}/${id}s.jpg`,
+          latestChapter: "",
+        });
+      });
+    } catch {}
     if (books.length === 0) return this.getHomepageBooks();
     return books.slice(0, 30);
   }

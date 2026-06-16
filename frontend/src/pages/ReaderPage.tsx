@@ -169,11 +169,11 @@ export default function ReaderPage() {
   }, [loading]);
 
   const nextPage = () => {
-    if (paged && page < totalPages - 1) { setFlipDir("right"); setTimeout(() => { setPage(p => p + 1); setFlipDir(""); }, 150); return; }
+    if (paged && page < totalPages - 1) { setFlipDir("right"); setTimeout(() => { setPage(p => p + 1); setFlipDir(""); }, 350); return; }
     if (hasNextCh) goChapter(chapters[chIdx + 1].id);
   };
   const prevPage = () => {
-    if (paged && page > 0) { setFlipDir("left"); setTimeout(() => { setPage(p => p - 1); setFlipDir(""); }, 150); return; }
+    if (paged && page > 0) { setFlipDir("left"); setTimeout(() => { setPage(p => p - 1); setFlipDir(""); }, 350); return; }
     if (hasPrevCh) goChapter(chapters[chIdx - 1].id);
   };
 
@@ -213,9 +213,10 @@ export default function ReaderPage() {
   if (!content) return null;
 
   return (
-    <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`} style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      {/* Sticky title bar */}
-      <div className={`sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 py-1.5 border-b border-gray-200 dark:border-gray-700 transition-all duration-300 ${showHeader ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"}`}>
+    <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`}>
+      {/* Title bar — collapses to 0 height when hidden so reading area fills the screen */}
+      <div className={`z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700 transition-all duration-300 overflow-hidden ${showHeader ? "max-h-14 py-1.5 opacity-100" : "max-h-0 py-0 opacity-0"}`}
+        style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <Link to={`/book/${site}/${bookId}`} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">← 返回</Link>
         <span className="text-sm font-medium line-clamp-1 text-center mx-2 flex-1 min-w-0">{content?.title || chapterTitle}</span>
         <button onClick={() => setShowToc(true)} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"} 目录</button>
@@ -226,12 +227,21 @@ export default function ReaderPage() {
         onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onClick={onTap}>
         {paged ? (
           <div className="h-full flex flex-col px-4 overflow-hidden" style={{ paddingTop: 24, paddingBottom: 24, perspective: "1200px" }}>
-            <div className="flex-1 flex items-center overflow-hidden">
-              <div className={`w-full max-w-[800px] mx-auto transition-all duration-300`}
+            <div className="flex-1 flex items-center overflow-hidden" style={{ perspective: "800px" }}>
+              <div className={`w-full max-w-[800px] mx-auto transition-all`}
                 style={{
-                  opacity: flipDir ? 0.9 : 1,
-                  transform: flipDir === "right" ? "perspective(1200px) rotateY(-22deg)" : flipDir === "left" ? "perspective(1200px) rotateY(22deg)" : "perspective(1200px) rotateY(0deg)",
+                  transitionDuration: "350ms",
+                  transform: flipDir === "right"
+                    ? "perspective(800px) rotateY(-18deg) translateX(-10px) scaleX(0.97)"
+                    : flipDir === "left"
+                    ? "perspective(800px) rotateY(18deg) translateX(10px) scaleX(0.97)"
+                    : "perspective(800px) rotateY(0deg) translateX(0px) scaleX(1)",
                   transformOrigin: flipDir === "right" ? "left center" : flipDir === "left" ? "right center" : "center center",
+                  boxShadow: flipDir === "right"
+                    ? "-6px 0 16px rgba(0,0,0,0.12)"
+                    : flipDir === "left"
+                    ? "6px 0 16px rgba(0,0,0,0.12)"
+                    : "none",
                 }}>
                 {content.title && page === 0 && <h1 className="text-center font-bold mb-6" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
                 <div style={{ fontSize, lineHeight: 1.8 }}>
@@ -266,9 +276,6 @@ export default function ReaderPage() {
           </div>
         )}
       </div>
-
-      {/* Floating chapter indicator (paged mode) */}
-      {paged && <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-gray-400 pointer-events-none">{chIdx + 1}/{chapters.length}</div>}
 
       {/* TOC Modal */}
       <Modal open={showToc} onClose={() => setShowToc(false)} title="目录">
