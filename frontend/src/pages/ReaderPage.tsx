@@ -61,9 +61,10 @@ export default function ReaderPage() {
   // Chapter list + book meta
   useEffect(() => {
     if (!site || !bookId) return;
+    let stale = false;
     api.getBookDetail(site, bookId).then((b: BookDetail) => {
+      if (stale) return;
       const raw = b.chapters.map(ch => ({ id: ch.id, title: ch.title }));
-      // Sort by chapter number for reliable reading order
       raw.sort((a, b) => {
         const na = parseInt(a.id.match(/\d+/)?.[0] || "0");
         const nb = parseInt(b.id.match(/\d+/)?.[0] || "0");
@@ -72,6 +73,7 @@ export default function ReaderPage() {
       setChapters(raw);
       setBookMeta({ title: b.title, author: b.author || "", coverUrl: b.coverUrl || "" });
     }).catch(() => {});
+    return () => { stale = true; };
   }, [site, bookId]);
 
   // Record reading history with real book metadata (book name as title, not chapter name)
@@ -136,8 +138,10 @@ export default function ReaderPage() {
       setMeasuredPages([paragraphs]); return;
     }
     const s = getComputedStyle(outerRef.current);
-    const paddingTop = parseFloat(s.paddingTop) || 0;
-    const paddingBottom = parseFloat(s.paddingBottom) || 0;
+    let paddingTop = parseFloat(s.paddingTop);
+    let paddingBottom = parseFloat(s.paddingBottom);
+    if (!paddingTop && CSS.supports?.("padding-top", "env(safe-area-inset-top)")) paddingTop = 44;
+    if (!paddingBottom && CSS.supports?.("padding-bottom", "env(safe-area-inset-bottom)")) paddingBottom = 34;
     const headerEl = outerRef.current.querySelector('.z-40') as HTMLElement | null;
     const headerH = headerEl ? headerEl.offsetHeight : 52;
     const availH = winH - paddingTop - paddingBottom - headerH - 48;
@@ -179,6 +183,11 @@ export default function ReaderPage() {
   const totalPages = computedPages.length;
   const hasPrevCh = chIdx > 0;
   const hasNextCh = chIdx >= 0 && chIdx < chapters.length - 1;
+
+  // Clamp page when totalPages shrinks (e.g. orientation change)
+  useEffect(() => {
+    setPage(p => Math.min(p, totalPages - 1));
+  }, [totalPages]);
 
   // Scroll to current chapter when TOC opens
   useEffect(() => {

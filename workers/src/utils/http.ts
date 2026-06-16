@@ -29,14 +29,15 @@ export async function fetchHTML(url: string, opts?: RequestInit): Promise<string
   if (!resp.ok) {
     throw new Error(`HTTP ${resp.status}: ${url}`);
   }
-  const contentType = resp.headers.get("content-type") || "";
-  if (contentType.includes("text/html") || contentType.includes("application/xhtml")) {
-    return resp.text();
-  }
-  // Decode bytes as GBK if not UTF-8 (common for Chinese novel sites)
   const buf = await resp.arrayBuffer();
-  const decoder = new TextDecoder("gbk");
-  return decoder.decode(buf);
+  const first = new TextDecoder("utf-8").decode(buf.slice(0, 1024));
+  const m = first.match(/<meta[^>]+charset=["']?([^"';\s>]+)/i);
+  const enc = m ? m[1].toLowerCase().replace("gb2312", "gbk") : "utf-8";
+  try {
+    return new TextDecoder(enc).decode(buf);
+  } catch {
+    return new TextDecoder("utf-8").decode(buf);
+  }
 }
 
 export async function postFormHTML(

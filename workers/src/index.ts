@@ -60,14 +60,22 @@ async function ensureInit(db?: D1Database) {
     await ensureAdmin(db);
   })().catch((e) => {
     console.error("DB init failed:", e.message);
-    initPromise = null; // allow retry on next request
+    initPromise = null;
   });
   return initPromise;
 }
 
+import { setJwtSecret } from "./auth/jwt";
+
 const handler: ExportedHandler<Bindings> = {
   async fetch(request, env, ctx) {
-    (globalThis as unknown as Record<string, unknown>).JWT_SECRET = env.JWT_SECRET || "novel-reader-prod-secret-change-me";
+    const secret = env.JWT_SECRET;
+    if (!secret) {
+      return new Response(JSON.stringify({ error: "JWT_SECRET 未配置" }), {
+        status: 500, headers: { "Content-Type": "application/json" },
+      });
+    }
+    setJwtSecret(secret);
     if (!initPromise) await ensureInit(env.DB);
     return app.fetch(request, env, ctx);
   },

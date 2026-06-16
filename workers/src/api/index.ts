@@ -198,8 +198,8 @@ api.post("/search/stream", async (c) => {
     ? sites.filter((k: string) => registry.getSource(k))
     : registry.getSearchableSources().map(s => s.key);
 
-  // KV cache hit: replay all aggregated results immediately as a single SSE batch.
-  const cacheKey = `v2:search:${kw.toLowerCase()}`;
+  const sitesKey = (targetSources || []).sort().join(",");
+  const cacheKey = `v2:search:${kw.toLowerCase()}:${sitesKey}`;
   let cached: { results: any[] } | null = null;
   if (c.env.CACHE) {
     try { cached = await c.env.CACHE.get(cacheKey, "json"); } catch {}
@@ -224,7 +224,10 @@ api.post("/search/stream", async (c) => {
     const aggregated: any[] = [];
     const pending = targetSources.map(async (siteKey: string) => {
       try {
-        const items = await registry.getSource(siteKey)!.search(kw, 10);
+        const items = await Promise.race([
+          registry.getSource(siteKey)!.search(kw, 10),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
+        ]);
         for (const item of items) {
           aggregated.push({ ...item, site: siteKey });
           await stream.writeSSE({ data: JSON.stringify({ site: siteKey, results: [item] }) });
@@ -234,7 +237,7 @@ api.post("/search/stream", async (c) => {
         await stream.writeSSE({ data: JSON.stringify({ site: siteKey, error: "搜索失败" }) });
       }
     });
-    await Promise.all(pending);
+    await Promise.allSettled(pending);
     await stream.writeSSE({ data: JSON.stringify({ done: true }) });
     if (c.env.CACHE && aggregated.length) {
       c.executionCtx?.waitUntil(c.env.CACHE.put(cacheKey, JSON.stringify({ results: aggregated }), { expirationTtl: 300 }));
@@ -247,9 +250,9 @@ api.post("/search", async (c) => {
   const { keyword, sites } = await c.req.json();
   if (!keyword?.trim()) return c.json({ error: "关键词不能为空" }, 400);
 
-  // KV cache for search (5min TTL, deduplicates identical queries)
   const k = keyword.trim();
-  const cacheKey = `v2:search:${k.toLowerCase()}`;
+  const sitesKey = ((sites as string[]) || []).sort().join(",");
+  const cacheKey = `v2:search:${k.toLowerCase()}:${sitesKey}`;
   if (c.env.CACHE) {
     try { const cached = await c.env.CACHE.get(cacheKey, "json"); if (cached) return c.json(cached); } catch {}
   }

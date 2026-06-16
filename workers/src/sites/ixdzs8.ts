@@ -11,8 +11,6 @@ export class Ixdzs8Source implements SiteSource {
   readonly key = "ixdzs8";
   readonly displayName = "爱下电子书";
   readonly tags = ["中文", "电子书"];
-  // Cookie store to persist anti-bot challenge session across requests (mirrors Go's cookiejar)
-  private cookies: string[] = [];
 
   resolveURL(url: string): ResolvedURL | null {
     try {
@@ -27,17 +25,16 @@ export class Ixdzs8Source implements SiteSource {
   }
 
   async search(keyword: string, limit: number): Promise<SearchResult[]> {
-    const html = await this.fetchVerified(`${BASE}/bsearch?q=${encodeURIComponent(keyword)}`);
+    const cookies: string[] = [];
+    const html = await this.fetchVerified(`${BASE}/bsearch?q=${encodeURIComponent(keyword)}`, cookies);
     const $ = parseHTML(html);
     const results: SearchResult[] = [];
     const seen = new Set<string>();
 
     $("li.burl").each((_, item) => {
-      // .bname is an h3, the <a> is inside it: <h3 class="bname"><a href="..." title="...">
       const titleLink = $(item).find(".bname a").first();
       let href = titleLink.attr("href") || "";
       let bookId = extractBookId(href);
-      // Fallback: try data-url attribute on li.burl
       if (!bookId) bookId = extractBookId($(item).attr("data-url") || "");
       if (!bookId || seen.has(bookId)) return;
       seen.add(bookId);
@@ -58,8 +55,9 @@ export class Ixdzs8Source implements SiteSource {
   }
 
   async downloadPlan(bookId: string): Promise<BookDetail> {
-    const html = await this.fetchVerified(`${BASE}/read/${bookId}/`);
-    const catalogData = await this.postCatalog(bookId);
+    const cookies: string[] = [];
+    const html = await this.fetchVerified(`${BASE}/read/${bookId}/`, cookies);
+    const catalogData = await this.postCatalog(bookId, cookies);
     const $ = parseHTML(html);
 
     const title = $('meta[property="og:novel:book_name"]').attr("content") ||
@@ -106,7 +104,8 @@ export class Ixdzs8Source implements SiteSource {
     bookId: string,
     chapter: { id: string; url: string; title: string }
   ): Promise<ChapterContent> {
-    const html = await this.fetchVerified(`${BASE}/read/${bookId}/${chapter.id}.html`);
+    const cookies: string[] = [];
+    const html = await this.fetchVerified(`${BASE}/read/${bookId}/${chapter.id}.html`, cookies);
     const $ = parseHTML(html);
 
     let title = cleanText($("h1.page-d-top").first().text());
@@ -114,8 +113,6 @@ export class Ixdzs8Source implements SiteSource {
     if (!title) title = chapter.title;
 
     const paragraphs: string[] = [];
-
-    // Primary: paragraph elements in page-content section
     $("section .page-content p").each((_, p) => {
       if ($(p).hasClass("abg")) return;
       const text = cleanText($(p).text());
@@ -123,7 +120,6 @@ export class Ixdzs8Source implements SiteSource {
       paragraphs.push(text);
     });
 
-    // Fallback: div.page-content
     if (!paragraphs.length) {
       $(".page-content").first().contents().each((_, node) => {
         if (node.type === "text") {
@@ -133,7 +129,6 @@ export class Ixdzs8Source implements SiteSource {
       });
     }
 
-    // Last resort: all p tags
     if (!paragraphs.length) {
       $("p").each((_, p) => {
         const text = cleanText($(p).text());
@@ -141,14 +136,12 @@ export class Ixdzs8Source implements SiteSource {
       });
     }
 
-    // Clean up: remove title from first paragraph if duplicated
     if (paragraphs.length && title) {
       const first = paragraphs[0].replace(title, "").replace(title.replace(/\s/g, ""), "").trim();
       if (!first) paragraphs.shift();
       else paragraphs[0] = first;
     }
 
-    // Remove "本章完" trailing paragraph
     if (paragraphs.length && paragraphs[paragraphs.length - 1].includes("本章完")) {
       paragraphs.pop();
     }
@@ -158,60 +151,47 @@ export class Ixdzs8Source implements SiteSource {
     return { id: chapter.id, title, content: paragraphs.join("\n") };
   }
 
-  private async fetchVerified(url: string): Promise<string> {
-    // Retry loop — mirrors Go's fetchVerifiedHTML (3 attempts)
+  private async fetchVerified(url: string, cookies: string[]): Promise<string> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const headers: Record<string, string> = {};
-      if (this.cookies.length) headers["Cookie"] = this.cookies.join("; ");
+      if (cookies.length) headers["Cookie"] = cookies.join("; ");
 
       let html = await fetchHTML(url, { headers });
       if (!isChallenge(html)) return html;
 
-      // Extract token from challenge page
       const m = html.match(TOKEN_RE);
       if (!m) throw new Error("ixdzs8 challenge token not found");
 
-      // Build challenge URL: append ?challenge= or &challenge=
       const sep = url.includes("?") ? "&" : "?";
       const challengeUrl = `${url}${sep}challenge=${m[1]}`;
 
-      // Request with challenge token, capture cookies
       const resp = await fetch(challengeUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           Referer: url,
           Accept: "text/html,application/xhtml+xml",
           "Accept-Language": "zh-CN,zh;q=0.9",
-          Cookie: this.cookies.join("; "),
+          Cookie: cookies.join("; "),
         },
       });
       if (!resp.ok) throw new Error(`ixdzs8 challenge HTTP ${resp.status}`);
 
-      // Persist cookies
       const setCookie = resp.headers.get("Set-Cookie");
       if (setCookie) {
+        cookies.length = 0;
         for (const part of setCookie.split(/,(?=\s*[^=;]+=)/)) {
           const name = part.split(";")[0]?.trim();
-          if (name && !this.cookies.some(c => c.startsWith(name.split("=")[0]))) {
-            this.cookies.push(name);
-          }
+          if (name) cookies.push(name);
         }
       }
 
       html = await resp.text();
       if (!isChallenge(html)) return html;
-      // Still challenge — retry
     }
     throw new Error("ixdzs8 challenge bypass failed after 3 attempts");
   }
 
-  // makeRequest builds headers with stored cookies
-  private cookieHeaders(): Record<string, string> {
-    if (!this.cookies.length) return {};
-    return { Cookie: this.cookies.join("; ") };
-  }
-
-  private async postCatalog(bookId: string): Promise<string> {
+  private async postCatalog(bookId: string, cookies: string[]): Promise<string> {
     const form = new URLSearchParams();
     form.set("bid", bookId);
     const resp = await fetch(`${BASE}/novel/clist/`, {
@@ -223,7 +203,7 @@ export class Ixdzs8Source implements SiteSource {
         Referer: `${BASE}/read/${bookId}/`,
         "X-Requested-With": "XMLHttpRequest",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        ...this.cookieHeaders(),
+        Cookie: cookies.length ? cookies.join("; ") : "",
       },
       body: form.toString(),
     });

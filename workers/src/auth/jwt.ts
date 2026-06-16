@@ -1,9 +1,14 @@
 import { SignJWT, jwtVerify } from "jose";
 
+let _secret: Uint8Array | null = null;
+
+export function setJwtSecret(secret: string) {
+  _secret = new TextEncoder().encode(secret);
+}
+
 function getSecret(): Uint8Array {
-  // Read from global scope (set by index.ts before each request)
-  const secret = (globalThis as unknown as { JWT_SECRET?: string }).JWT_SECRET || "novel-reader-dev";
-  return new TextEncoder().encode(secret);
+  if (!_secret) throw new Error("JWT_SECRET 未初始化");
+  return _secret;
 }
 
 export interface JwtPayload { userId: number; username: string; }
