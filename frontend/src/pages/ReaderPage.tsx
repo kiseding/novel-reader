@@ -21,8 +21,6 @@ export default function ReaderPage() {
   const [showToc, setShowToc] = useState(false);
   const tocRef = useRef<HTMLButtonElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [showHeader, setShowHeader] = useState(true);
-  const lastScrollTop = useRef(0);
   const [chapters, setChapters] = useState<{ id: string; title: string }[]>([]);
   const [bookMeta, setBookMeta] = useState<{ title: string; author: string; coverUrl: string } | null>(null);
   const [chIdx, setChIdx] = useState(-1);
@@ -141,7 +139,7 @@ export default function ReaderPage() {
     const paddingTop = parseFloat(s.paddingTop) || 0;
     const paddingBottom = parseFloat(s.paddingBottom) || 0;
     const headerEl = outerRef.current.querySelector('.z-40') as HTMLElement | null;
-    const headerH = showHeader && headerEl ? headerEl.offsetHeight : 0;
+    const headerH = headerEl ? headerEl.offsetHeight : 52;
     const availH = winH - paddingTop - paddingBottom - headerH - 48;
     if (availH <= 0) { setMeasuredPages([paragraphs]); return; }
 
@@ -175,7 +173,7 @@ export default function ReaderPage() {
     if (cur.length) pages.push(cur);
     document.body.removeChild(measure);
     setMeasuredPages(pages.length > 0 ? pages : [paragraphs]);
-  }, [paged, paragraphs, fontSize, showHeader, winH]);
+  }, [paged, paragraphs, fontSize, winH]);
 
   const computedPages = measuredPages.length > 0 ? measuredPages : [paragraphs];
   const totalPages = computedPages.length;
@@ -187,20 +185,7 @@ export default function ReaderPage() {
     if (showToc) requestAnimationFrame(() => tocRef.current?.scrollIntoView({ block: "center" }));
   }, [showToc]);
 
-  // Scroll listener for header hide/show
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const st = el.scrollTop;
-      if (st <= 0) { setShowHeader(true); lastScrollTop.current = st; return; }
-      if (st > lastScrollTop.current + 8) setShowHeader(false);
-      else if (st < lastScrollTop.current - 8) setShowHeader(true);
-      lastScrollTop.current = st;
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [loading]);
+
 
   const nextPage = () => {
     if (paged && page < totalPages - 1) { setPage(p => p + 1); return; }
@@ -250,8 +235,8 @@ export default function ReaderPage() {
   return (
     <div ref={outerRef} className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`}
       style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      {/* Title bar — collapses to 0 height when hidden so reading area fills the screen */}
-      <div className={`z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700 transition-all duration-300 overflow-hidden ${showHeader ? "max-h-14 py-1.5 opacity-100" : "max-h-0 py-0 opacity-0"}`}>
+      {/* Title bar */}
+      <div className="z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 py-1.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
         <Link to={`/book/${site}/${bookId}`} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">← 返回</Link>
         <span className="text-sm font-medium line-clamp-1 text-center mx-2 flex-1 min-w-0">{content?.title || chapterTitle}</span>
         <button onClick={() => setShowToc(true)} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"} 目录</button>
