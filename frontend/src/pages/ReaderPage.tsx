@@ -145,7 +145,9 @@ export default function ReaderPage() {
     const availH = winH - paddingTop - paddingBottom - headerH - 48;
     if (availH <= 0) { setMeasuredPages([paragraphs]); return; }
 
-    const contentW = Math.min(800, winH - 32);
+    const titleH = content?.title ? (fontSize + 6) * 1.8 + 24 : 0;
+    const effectiveH = availH - titleH;
+    const contentW = Math.min(800, window.innerWidth - 32);
     const measure = document.createElement('div');
     measure.style.cssText = `position:absolute;left:-9999px;top:0;width:${contentW}px;font-size:${fontSize}px;line-height:1.8;visibility:hidden;pointer-events:none;`;
     document.body.appendChild(measure);
@@ -157,7 +159,7 @@ export default function ReaderPage() {
       p.textContent = line;
       p.style.cssText = `text-indent:2rem;margin:0 0 ${fontSize * 0.5}px;font-size:${fontSize}px;line-height:1.8;`;
       measure.appendChild(p);
-      if (measure.scrollHeight > availH && cur.length > 0) {
+      if (measure.scrollHeight > effectiveH && cur.length > 0) {
         measure.removeChild(p);
         pages.push(cur);
         cur = [line];
