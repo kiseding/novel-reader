@@ -57,7 +57,6 @@ export default function ReaderPage() {
         .then(r => { if (!stale) { setContent(r); cache.setCachedChapter(ck, r.content); } })
         .catch(e => { if (!stale) setError(e.message); }).finally(() => { if (!stale) setLoading(false); });
     });
-    window.scrollTo(0, 0);
     return () => { stale = true; };
   }, [site, bookId, chapterId]);
 
