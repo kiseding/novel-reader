@@ -1,5 +1,5 @@
 // Mobile-first reader with swipe gestures, paged/scroll modes
-import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
 import Modal from "../components/Modal";
 import * as api from "../lib/api";
@@ -30,8 +30,7 @@ export default function ReaderPage() {
   const [winH, setWinH] = useState(() => window.innerHeight);
   const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
   const touchedRef = useRef(false); // suppress click after touch swipe
-  const contentAreaRef = useRef<HTMLDivElement>(null);
-  const [contentAreaH, setContentAreaH] = useState(0);
+  const outerRef = useRef<HTMLDivElement>(null);
 
   // Window resize
   useEffect(() => {
@@ -131,27 +130,33 @@ export default function ReaderPage() {
 
   const paragraphs = useMemo(() => content?.content.split("\n").filter(Boolean) || [], [content]);
 
-  // Measure actual available height for pagination (accounts for safe-area, header, padding)
-  useLayoutEffect(() => {
-    if (paged && contentAreaRef.current) {
-      const h = contentAreaRef.current.clientHeight;
-      if (h > 0) setContentAreaH(h);
+  // Compute available content height in paged mode (safe-area + header + padding)
+  const pagedAvailH = useMemo(() => {
+    if (!paged) return 0;
+    let paddingTop = 0, paddingBottom = 0;
+    if (outerRef.current) {
+      const s = getComputedStyle(outerRef.current);
+      paddingTop = parseFloat(s.paddingTop) || 0;
+      paddingBottom = parseFloat(s.paddingBottom) || 0;
     }
-  }, [paged, showHeader, content, fontSize]);
+    const headerH = showHeader ? 52 : 0;
+    const contentPad = 48; // 24px top + 24px bottom in the paged container
+    return winH - paddingTop - paddingBottom - headerH - contentPad;
+  }, [paged, showHeader, winH]);
 
   const computedPages = useMemo<string[][]>(() => {
     if (!paged || winH < 300 || !paragraphs.length) {
       return [paragraphs];
     }
+    const titleH = content?.title ? (fontSize + 6) * 1.8 + 24 : 0;
     const lineH = fontSize * (1.8 + 0.5);
-    const availH = contentAreaH > 0 ? contentAreaH : winH - 200;
-    const linesPerPage = Math.max(1, Math.floor(availH / lineH));
+    const linesPerPage = Math.max(1, Math.floor(((pagedAvailH || winH - 200) - titleH) / lineH));
     const pages: string[][] = [];
     for (let i = 0; i < paragraphs.length; i += linesPerPage) {
       pages.push(paragraphs.slice(i, i + linesPerPage));
     }
     return pages.length > 0 ? pages : [paragraphs];
-  }, [paragraphs, fontSize, winH, paged, contentAreaH]);
+  }, [paragraphs, fontSize, winH, paged, pagedAvailH]);
 
   const totalPages = computedPages.length;
   const hasPrevCh = chIdx > 0;
@@ -222,7 +227,7 @@ export default function ReaderPage() {
   if (!content) return null;
 
   return (
-    <div className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`}
+    <div ref={outerRef} className={`fixed inset-0 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200 flex flex-col`}
       style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       {/* Title bar — collapses to 0 height when hidden so reading area fills the screen */}
       <div className={`z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700 transition-all duration-300 overflow-hidden ${showHeader ? "max-h-14 py-1.5 opacity-100" : "max-h-0 py-0 opacity-0"}`}>
@@ -237,7 +242,7 @@ export default function ReaderPage() {
         {paged ? (
           <div className="h-full flex flex-col px-4" style={{ paddingTop: 24, paddingBottom: 24 }}>
             {content.title && page === 0 && <h1 className="text-center font-bold mb-6 shrink-0" style={{ fontSize: fontSize + 6 }}>{content.title}</h1>}
-            <div ref={contentAreaRef} className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden">
               <div className="max-w-[800px] mx-auto">
                 <div style={{ fontSize, lineHeight: 1.8 }}>
                   {(computedPages[page] || []).map((line, i) => <p key={i} className="indent-8" style={{ fontSize, marginBottom: fontSize * 0.5 }}>{line}</p>)}
