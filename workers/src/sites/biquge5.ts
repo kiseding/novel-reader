@@ -106,22 +106,6 @@ export class Biquge5Source implements SiteSource {
     const $ = parseHTML(html);
     const title = $('meta[property="og:title"]').attr("content")?.replace("最新章节", "").trim() || chapter.title;
     let text = ($(".box.single").first().text() || "").replace(/\n{3,}/g, "\n").trim();
-
-    // Multi-page detection: look for "第(X/Y)页" pattern and fetch subsequent pages
-    const pageMatch = text.match(/第\s*[\(（]?\s*(\d+)\s*\/\s*(\d+)\s*[\)）]?\s*页/);
-    if (pageMatch) {
-      const [, current, total] = pageMatch;
-      for (let p = parseInt(current) + 1; p <= parseInt(total) && p <= 10; p++) {
-        try {
-          const pgUrl = `${BASE}/${bookId}/${chapter.id}_${p}.html`;
-          const pgHtml = await fetchHTML(pgUrl);
-          const pg$ = parseHTML(pgHtml);
-          const pgText = (pg$(".box.single").first().text() || "").replace(/\n{3,}/g, "\n").trim();
-          if (pgText) text += "\n" + pgText;
-        } catch { break; }
-      }
-    }
-
     text = cleanChapterContent(text);
     return { id: chapter.id, title, content: text };
   }

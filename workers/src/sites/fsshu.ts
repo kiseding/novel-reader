@@ -112,20 +112,7 @@ export class FsshuSource implements SiteSource {
     const title = $('meta[property="og:title"]').attr("content")?.replace("最新章节", "").trim() || chapter.title;
     let text = ($(".box.single").first().text() || "").replace(/\n{3,}/g, "\n").trim();
 
-    // Multi-page chapters
-    const pageMatch = text.match(/第\s*[\(（]?\s*(\d+)\s*\/\s*(\d+)\s*[\)）]?\s*页/);
-    if (pageMatch) {
-      const [, current, total] = pageMatch;
-      for (let p = parseInt(current) + 1; p <= parseInt(total) && p <= 10; p++) {
-        try {
-          const pgUrl = `${BASE}${PREFIX}/${bookId}/c${chapter.id}_${p}.html`;
-          const pgHtml = await fetchHTML(pgUrl);
-          const pg$ = parseHTML(pgHtml);
-          const pgText = (pg$(".box.single").first().text() || "").replace(/\n{3,}/g, "\n").trim();
-          if (pgText) text += "\n" + pgText;
-        } catch { break; }
-      }
-    }
+    // NOTE: multi-page chapter fetch disabled — sequential fetches exceed Worker 30s limit
 
     text = cleanChapterContent(text);
     return { id: chapter.id, title, content: text };

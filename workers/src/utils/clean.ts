@@ -1,3 +1,5 @@
+const CH_NUM = /第\s*[一二三四五六七八九十百千万零\d]+\s*章/;
+
 // Chapter content cleaner — strips source site UI noise + duplicate title
 export function cleanChapterContent(raw: string, title?: string): string {
   let text = raw;

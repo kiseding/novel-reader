@@ -1,7 +1,7 @@
 // Retry utility — mirrors go-novel-dl's shouldRetrySiteRequest + siteRetryDelay
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  maxAttempts = 4
+  maxAttempts = 2
 ): Promise<T> {
   let lastErr: Error | undefined;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {

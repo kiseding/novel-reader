@@ -292,7 +292,7 @@ api.get("/books/:site/:bookId", async (c) => {
     const response = { ...detail, chapters: detail.chapters.slice(start, start + pageSize), chapterPage: { page: p, pageSize, total, hasPrev: p > 1, hasNext: p < totalPages } };
     if (c.env.CACHE) { c.executionCtx?.waitUntil(c.env.CACHE.put(cacheKey, JSON.stringify(response), { expirationTtl: 600 })); }
     return c.json(response);
-  } catch (e) { console.error(e); return c.json({ error: "服务暂时不可用" }, 502); }
+  } catch (e: any) { console.error(e); return c.json({ error: `服务暂时不可用: ${e.message}` }, 502); }
 });
 
 // ========== Chapter content ==========
@@ -305,7 +305,7 @@ api.get("/books/:site/:bookId/:chapterId", async (c) => {
     content.content = cleanChapterContent(content.content, content.title);
     if (c.env.CACHE) { c.executionCtx?.waitUntil(c.env.CACHE.put(cacheKey, JSON.stringify(content), { expirationTtl: 1800 })); }
     return c.json(content);
-  } catch (e) { console.error(e); return c.json({ error: "服务暂时不可用" }, 502); }
+  } catch (e: any) { console.error(e); return c.json({ error: "服务暂时不可用" }, 502); }
 });
 
 // ========== Bookshelf (authenticated) ==========

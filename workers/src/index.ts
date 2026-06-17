@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import apiRoutes from "./api/index";
 import { initSchema, ensureAdmin } from "./db/schema";
+import { setJwtSecret } from "./auth/jwt";
 import type { D1Database } from "@cloudflare/workers-types";
 
 type Bindings = {
@@ -65,19 +66,24 @@ async function ensureInit(db?: D1Database) {
   return initPromise;
 }
 
-import { setJwtSecret } from "./auth/jwt";
-
 const handler: ExportedHandler<Bindings> = {
   async fetch(request, env, ctx) {
-    const secret = env.JWT_SECRET;
-    if (!secret) {
-      return new Response(JSON.stringify({ error: "JWT_SECRET 未配置" }), {
+    try {
+      const secret = env.JWT_SECRET;
+      if (!secret) {
+        return new Response(JSON.stringify({ error: "JWT_SECRET 未配置" }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      setJwtSecret(secret);
+      if (!initPromise) await ensureInit(env.DB);
+      return await app.fetch(request, env, ctx);
+    } catch (e: any) {
+      console.error("FATAL:", e);
+      return new Response(JSON.stringify({ error: "服务内部错误", detail: e.message?.slice(0, 200) }), {
         status: 500, headers: { "Content-Type": "application/json" },
       });
     }
-    setJwtSecret(secret);
-    if (!initPromise) await ensureInit(env.DB);
-    return app.fetch(request, env, ctx);
   },
 };
 
