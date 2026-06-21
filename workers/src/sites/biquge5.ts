@@ -3,6 +3,7 @@ import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL 
 import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
 import { withRetry } from "../utils/retry";
 import { cleanChapterContent } from "../utils/clean";
+import { fetchMultiPageChapter } from "../utils/chapter";
 
 const BASE = "https://www.biquge5.com";
 const BOOK_RE = /^\/(\d+_\d+)\/?$/;
@@ -105,8 +106,21 @@ export class Biquge5Source implements SiteSource {
     const html = await withRetry(() => fetchHTML(url));
     const $ = parseHTML(html);
     const title = $('meta[property="og:title"]').attr("content")?.replace("最新章节", "").trim() || chapter.title;
-    let text = ($(".box.single").first().text() || "").replace(/\n{3,}/g, "\n").trim();
-    text = cleanChapterContent(text);
-    return { id: chapter.id, title, content: text };
+
+    const extractText = (h: string): string => {
+      const _$ = parseHTML(h);
+      return (_$(".box.single").first().text() || "").replace(/\n{3,}/g, "\n").trim();
+    };
+
+    const firstText = extractText(html);
+    const text = await fetchMultiPageChapter(
+      html,
+      firstText,
+      (p) => `${BASE}/${bookId}/${chapter.id}_${p}.html`,
+      extractText,
+      { maxPages: 5, concurrency: 2 }
+    );
+
+    return { id: chapter.id, title, content: cleanChapterContent(text, title) };
   }
 }
