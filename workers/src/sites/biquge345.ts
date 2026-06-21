@@ -1,6 +1,7 @@
 // Ported from go-novel-dl internal/site/biquge345.go
 import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL } from "../types";
 import { fetchHTML, postFormHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
+import { fetchMultiPageChapter } from "../utils/chapter";
 
 const BASE = "https://www.biquge345.com";
 const BOOK_RE = /^\/book\/(\d+)\/?$/;
@@ -138,23 +139,38 @@ export class Biquge345Source implements SiteSource {
     bookId: string,
     chapter: { id: string; url: string; title: string }
   ): Promise<ChapterContent> {
-    const html = await fetchHTML(`${BASE}/chapter/${bookId}/${chapter.id}.html`);
+    const url = chapter.url || `${BASE}/chapter/${bookId}/${chapter.id}.html`;
+    const html = await fetchHTML(url);
     const $ = parseHTML(html);
 
     let title = cleanText($("#neirong h1").first().text()) || chapter.title;
-    const contentDiv = $("#txt");
-    const paragraphs: string[] = [];
-    contentDiv.contents().each((_, node) => {
-      if (node.type === "text") {
-        const line = cleanText($(node).text());
-        if (line && !isAd(line)) paragraphs.push(line);
-      } else if (node.type === "tag") {
-        const text = cleanText($(node).text());
-        if (text && !isAd(text)) paragraphs.push(text);
-      }
-    });
 
-    return { id: chapter.id, title, content: paragraphs.join("\n") };
+    const extractText = (h: string): string => {
+      const _$ = parseHTML(h);
+      const contentDiv = _$("#txt");
+      const paragraphs: string[] = [];
+      contentDiv.contents().each((_, node) => {
+        if (node.type === "text") {
+          const line = cleanText(_$(node).text());
+          if (line && !isAd(line)) paragraphs.push(line);
+        } else if (node.type === "tag") {
+          const text = cleanText(_$(node).text());
+          if (text && !isAd(text)) paragraphs.push(text);
+        }
+      });
+      return paragraphs.join("\n");
+    };
+
+    const firstText = extractText(html);
+    const text = await fetchMultiPageChapter(
+      html,
+      firstText,
+      (p) => `${BASE}/chapter/${bookId}/${chapter.id}_${p}.html`,
+      extractText,
+      { maxPages: 5, concurrency: 2 }
+    );
+
+    return { id: chapter.id, title, content: text };
   }
 }
 
