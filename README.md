@@ -1,126 +1,130 @@
 # Novel Reader
 
-多源在线小说阅读器，基于 Cloudflare Pages + Workers + D1 + KV。
+多源在线小说阅读器，基于 Cloudflare Pages + Workers + D1 + KV，面向轻量、快速、可部署的个人/小型团队阅读服务。
 
-## 架构
+主要特性
 
-```
-浏览器 → Cloudflare Pages (SPA)
-  └─ /api/* → Worker (Hono)
-       ├── /auth/*      JWT 认证
-       ├── /comics/*    小说详情 + 章节
-       ├── /bookshelf   书架 (D1)
-       ├── /history     阅读历史 (D1)
-       └── /admin/*     用户管理
-```
+- 聚合多个免费小说源，支持按源直达与并发搜索（SSE 流式返回）。
+- 双模式阅读器：滚动与翻页（键盘、手势支持）。
+- 书架与阅读历史：使用 D1 存储，可跨设备同步用户数据。
+- 多用户与管理员后台：管理员可创建、管理用户账号。
+- 缓存与防护：KV 缓存、UA 轮换、CORS 域限制与速率限制。
+- PWA 支持与深色主题，提供离线缓存体验。
 
-## 书源
+架构概览
 
-| 源 |
-|---|
-| biquge345 |
-| biquge5 |
-| ixdzs8 |
-| fsshu |
+浏览器 (Cloudflare Pages, React SPA)
+  └─ /api/* → Cloudflare Worker (Hono)
+       ├── /auth/*      JWT 认证与用户管理
+       ├── /books/*     小说详情与章节（跨源抓取与适配）
+       ├── /bookshelf   书架（D1）
+       ├── /history     阅读历史（D1）
+       └── /admin/*     管理端功能
 
-## 项目结构
+项目结构（简要）
 
-```
-├── frontend/          React SPA (Vite + TailwindCSS + React Router)
-│   └── src/
-│       ├── pages/     HomePage, ReaderPage, BookDetailPage, ...
-│       ├── components/ Navbar, Modal, BookCard, UserMenu
-│       ├── hooks/     useAuth, useSearch
-│       └── lib/       API 客户端
-├── workers/           Cloudflare Worker (Hono)
-│   └── src/
-│       ├── index.ts   入口 (CORS + DB 初始化)
-│       ├── api/       API 路由
-│       ├── sites/     小说源适配器 (6 个)
-│       ├── auth/      JWT + 密码哈希
-│       ├── db/        D1 Schema
-│       ├── middleware/ 速率限制
-│       └── utils/     HTTP / GBK 解码 / 章节分割
-└── .github/workflows/ CI/CD 自动部署
-```
+- frontend/  — React + Vite + TailwindCSS（SPA）
+  - src/pages/      页面：Home、Reader、BookDetail、Search...
+  - src/components/ 可复用 UI 组件
+  - src/hooks/      useAuth、useSearch 等
+  - src/lib/        API 客户端与工具
 
-## API
+- workers/   — Cloudflare Worker (Hono)
+  - src/api/         路由与控制器
+  - src/sites/       各小说源适配器（site driver）
+  - src/db/          D1 Schema 与 DB helper
+  - src/auth/        JWT、密码哈希（PBKDF2）
+  - src/middleware/  速率限制、CORS、缓存策略
+  - src/utils/       HTTP、编码（GBK）、章节分割等
 
-### 公开
+- .github/workflows/ — CI/CD（自动部署到 Pages / Workers）
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/sources` | 源列表 |
-| GET | `/api/homepage` | 首页推荐 |
-| POST | `/api/search` | 聚合搜索 |
-| POST | `/api/search/stream` | SSE 流式搜索 |
-| GET | `/api/books/:site/:bookId` | 小说详情 |
-| GET | `/api/books/:site/:bookId/:chapterId` | 章节内容 |
-| POST | `/api/auth/login` | 登录 |
+支持的书源（示例）
 
-### 需认证
+- biquge345
+- biquge5
+- ixdzs8
+- fsshu
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/auth/me` | 验证 token |
-| PUT | `/api/auth/change-password` | 修改密码 |
-| GET/POST | `/api/bookshelf` | 书架 |
-| DELETE | `/api/bookshelf/:site/:bookId` | 移出书架 |
-| GET/POST | `/api/history` | 阅读历史 |
-| DELETE | `/api/history` | 清空历史 |
-| PUT | `/api/progress/:site/:bookId` | 阅读进度 |
+API 快速参考
 
-## 功能
+公开接口
 
-- 6 源聚合搜索（SSE 流式 + URL 直达）
-- 双模式阅读器（滚动 + 翻页，键盘方向键 + 手势翻页）
-- 个人书架 + 阅读历史（D1 跨设备同步）
-- 多用户（管理员创建/管理账号）
-- 反追踪（UA 轮换、CORS 域名限制）
-- 速率限制（搜索/首页 60次/分钟）
-- 深色主题 + PWA 可安装
-- 离线缓存
+- GET  /api/sources                       — 获取源列表
+- GET  /api/homepage                      — 首页推荐数据
+- POST /api/search                        — 聚合搜索（可并发多个源）
+- POST /api/search/stream                 — SSE 流式搜索
+- GET  /api/books/:site/:bookId           — 获取小说详情
+- GET  /api/books/:site/:bookId/:chapterId — 获取章节内容
+- POST /api/auth/login                    — 用户登录（返回 JWT）
 
-## 数据库
+需要认证
 
-D1 自动建表：
+- GET    /api/auth/me                     — 验证并返回当前用户信息
+- PUT    /api/auth/change-password        — 修改密码
+- GET/POST /api/bookshelf                 — 获取/更新书架
+- DELETE /api/bookshelf/:site/:bookId     — 从书架移除
+- GET/POST /api/history                   — 阅读历史记录
+- DELETE /api/history                     — 清空历史
+- PUT    /api/progress/:site/:bookId      — 更新阅读进度
 
-| 表 | 说明 |
-|---|---|
-| `users` | 用户（PBKDF2 密码哈希） |
-| `bookshelf` | 书架 |
-| `history` | 阅读历史 |
+缓存与 TTL（默认）
 
-## 缓存
+- KV 搜索结果   — 5 分钟
+- KV 小说详情   — 10 分钟
+- KV 章节内容   — 30 分钟
 
-| 层级 | TTL |
-|---|---|
-| KV 搜索结果 | 5 分钟 |
-| KV 小说详情 | 10 分钟 |
-| KV 章节内容 | 30 分钟 |
+数据库
 
-## 本地开发
+使用 Cloudflare D1，自动建表示例：
+
+- users      — 用户（密码使用 PBKDF2 哈希）
+- bookshelf  — 用户书架
+- history    — 阅读历史
+
+本地开发
+
+1. 安装依赖并运行前端和 Worker：
 
 ```bash
 pnpm install
-cd frontend && pnpm dev   # http://localhost:5173
-cd workers && pnpm dev    # http://localhost:8787
+# 在两个终端分别运行：
+cd frontend && pnpm dev   # 前端： http://localhost:5173
+cd workers && pnpm dev    # Worker 本地： http://localhost:8787
 ```
 
-首次启动自动创建管理员 `admin / admin123`，**部署后请立即修改密码**。
+2. 第一次运行会初始化一个默认管理员账号（仅用于本地开发）：
 
-## 部署
+- 用户名：`admin`  密码：`admin123`
 
-推 `main` 自动部署。需配置 GitHub Secrets：
+部署说明
 
-| Secret | 说明 |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | Workers + Pages + D1 权限 |
-| `CLOUDFLARE_ACCOUNT_ID` | 账号 ID |
-| `D1_DATABASE_ID` | `wrangler d1 create novel-reader-db` |
-| `KV_NAMESPACE_ID` | `wrangler kv:namespace create NOVEL_CACHE` |
-| `JWT_SECRET` | `openssl rand -hex 32` |
+推送到默认分支（如 main）会触发 GitHub Actions 自动部署到 Cloudflare Pages/Workers。
+需要在仓库 Secrets 中配置：
 
-## License
+- CLOUDFLARE_API_TOKEN — 用于 Pages & Workers & D1 的权限（建议设置最小权限）
+- CLOUDFLARE_ACCOUNT_ID — Cloudflare 账号 ID
+- D1_DATABASE_ID        — D1 实例 ID
+- KV_NAMESPACE_ID       — KV 命名空间 ID（小说缓存）
+- JWT_SECRET            — 随机密钥（openssl rand -hex 32）
 
-AGPL-3.0
+安全提示：
+
+- 本地/初次部署默认管理员请尽快修改密码并删除示例账号。
+- 请为 API Token 设置最小权限范围，并通过组织/团队管理访问。
+
+贡献指南
+
+欢迎 Issue 与 PR。请遵循以下基本流程：
+
+1. 提交一个 Issue 描述问题或建议。
+2. 新功能或修复请新建分支并提交 PR，CI 会运行测试与构建。
+3. 代码风格：TypeScript + ESLint + Prettier（项目配置参见 .eslintrc / .prettierrc）。
+
+许可
+
+本项目采用 AGPL-3.0 许可证。
+
+------
+
+如果你希望我同时把 README 更新到仓库（添加英文版、更多部署示例、或把 README 分成 README.md + CONTRIBUTING.md），告诉我你的偏好，我可以在本仓库为你提交这些更改。
