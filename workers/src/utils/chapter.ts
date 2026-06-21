@@ -3,7 +3,7 @@
 // This helper fetches the remaining pages concurrently with bounded
 // concurrency/timeouts so the Worker stays within the 30s request limit.
 
-import { fetchHTML, parseHTML } from "./http";
+import { fetchHTML } from "./http";
 
 export interface MultiPageOptions {
   /** Maximum total pages to fetch (including the first page). Default 5. */
@@ -83,10 +83,11 @@ export async function fetchMultiPageChapter(
   };
 
   for (let i = 0; i < remaining; i += concurrency) {
-    const batch = Array.from({ length: concurrency }, (_, j) => {
+    const batch: Array<Promise<string | null>> = [];
+    for (let j = 0; j < concurrency && i + j < remaining; j++) {
       const pageNum = currentPage + 1 + i + j;
-      return pageNum <= totalPages ? fetchOne(pageNum) : Promise.resolve(null);
-    });
+      batch.push(pageNum <= totalPages ? fetchOne(pageNum) : Promise.resolve(null));
+    }
     const results = await Promise.all(batch);
     for (const text of results) {
       if (text) merged.push(text);
