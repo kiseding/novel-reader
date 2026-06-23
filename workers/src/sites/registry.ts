@@ -59,24 +59,19 @@ function parseListPage(html: string, max = 30): { books: SearchResult[]; totalPa
   });
 
   // Extract total pages from paginator.
-  // Ranking pages: <a href="...?page=N" title="最后一页">
-  // Category pages: <a href="...index-0-0-0-N.html" class="num">
+  // Both ranking and category pages have "最后一页" links, but
+  // category pages prefix the title with category name (e.g. "玄幻奇幻最后一页").
+  // Match on *含 "最后一页" and try both URL formats.
   let totalPages = 1;
 
-  // Method 1: "最后一页" link with page=N (ranking pages)
-  const lastHref = $(`a[title="最后一页"]`).first().attr("href") || "";
-  const pageMatch = lastHref.match(/page=(\d+)/);
-  if (pageMatch) {
-    totalPages = parseInt(pageMatch[1], 10) || 1;
-  } else {
-    // Method 2: category pages — find max N in index-0-0-0-{N}.html links
-    let maxN = 1;
-    $(`a.num[href*="index-0-0-0-"]`).each((_, a) => {
-      const h = $(a).attr("href") || "";
-      const n = parseInt(h.match(/index-0-0-0-(\d+)\.html/)?.[1] || "0", 10);
-      if (n > maxN) maxN = n;
-    });
-    if (maxN > 1) totalPages = maxN;
+  const lastLink = $(`a[title*="最后一页"]`).first().attr("href") || "";
+  if (lastLink) {
+    const pm = lastLink.match(/page=(\d+)/);
+    if (pm) { totalPages = parseInt(pm[1], 10) || 1; }
+    else {
+      const im = lastLink.match(/index-0-0-0-(\d+)\.html/);
+      if (im) totalPages = parseInt(im[1], 10) || 1;
+    }
   }
 
   return { books: books.slice(0, max), totalPages };

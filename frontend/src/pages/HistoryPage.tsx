@@ -46,7 +46,7 @@ export default function HistoryPage() {
                 <h3 className="font-medium text-sm line-clamp-1">{item.title}</h3>
                 {item.author && <p className="text-xs text-gray-500 mt-0.5">{item.author}</p>}
                 {item.chapter_title && <p className="text-xs text-accent mt-1 line-clamp-1">读到: {item.chapter_title}</p>}
-                <p className="text-[10px] text-gray-400 mt-1">{new Date(item.last_read_at || item.created_at).toLocaleDateString("zh-CN")} · {item.site}</p>
+                <p className="text-[10px] text-gray-400 mt-1">{new Date(item.last_read_at || item.created_at).toLocaleDateString("zh-CN")}</p>
               </div>
               <button onClick={async (e) => { e.preventDefault(); e.stopPropagation(); try { await api.removeFromBookshelf(item.site, item.book_id); setItems(p => p.filter(i => i.id !== item.id)); } catch (e: any) { setMsg(e.message || "删除失败"); setTimeout(() => setMsg(""), 3000); } }} className="shrink-0 self-center text-red-400 hover:text-red-600 text-xs min-w-[44px] min-h-[44px] pointer-events-auto z-10">删除</button>
             </Link>

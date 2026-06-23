@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import * as api from "../lib/api";
 import type { BookDetail, BookshelfItem } from "../lib/api";
@@ -21,6 +21,8 @@ export default function BookDetailPage() {
   const [dlLoading, setDlLoading] = useState(false);
   const [dlProgress, setDlProgress] = useState<{ done: number; total: number } | null>(null);
   const [msg, setMsg] = useState("");
+  const [currentChapterId, setCurrentChapterId] = useState("");
+  const autoPageRef = useRef(false);
 
   useEffect(() => {
     if (!site || !bookId) return;
@@ -38,10 +40,21 @@ export default function BookDetailPage() {
         setInBookshelf(!!found);
         if (found?.chapter_id) {
           setProgress({ chapterId: found.chapter_id, chapterTitle: found.chapter_title });
+          if (!autoPageRef.current && found.chapter_index > 0) {
+            const targetPage = Math.floor(found.chapter_index / 100) + 1;
+            if (targetPage !== chapterPage) {
+              autoPageRef.current = true;
+              setChapterPage(targetPage);
+              return;
+            }
+          }
+          setCurrentChapterId(found.chapter_id);
         }
       }
-    }).catch(e => setError(e.message)).finally(() => setLoading(false));
-    // Check cache status (no user required)
+      autoPageRef.current = false;
+    }).catch(e => setError(e.message)).finally(() => {
+      if (!autoPageRef.current) setLoading(false);
+    });
     window.caches.keys().then(keys => { setIsCached(keys.some(k => k.includes(`/cache/${site}/${bookId}/`))); }).catch(() => {});
   }, [site, bookId, chapterPage, user]);
 
@@ -104,7 +117,7 @@ export default function BookDetailPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-bold line-clamp-2">{book.title}</h1>
           <p className="text-sm text-gray-500 mt-1">{book.author}</p>
-          <p className="text-xs text-gray-400 mt-1">共 {book.chapterPage?.total || book.chapters.length} 章 · {book.site}</p>
+          <p className="text-xs text-gray-400 mt-1">共 {book.chapterPage?.total || book.chapters.length} 章</p>
           <div className="mt-3 flex gap-2 flex-wrap">
             {(() => {
               const target = progress
@@ -146,9 +159,13 @@ export default function BookDetailPage() {
 
       <h2 className="text-sm font-medium mb-3">目录</h2>
       <div className="space-y-0.5">
-        {book.chapters.map(ch => (
+        {book.chapters.map((ch, i) => (
           <Link key={ch.id} to={`/read/${site}/${bookId}/${ch.id}?title=${encodeURIComponent(ch.title)}&url=${encodeURIComponent(ch.url || "")}`}
-            className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 transition-colors min-h-[44px]">
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors min-h-[44px] ${
+              ch.id === currentChapterId
+                ? "bg-[#2563eb]/10 text-[#2563eb] font-medium border-l-2 border-[#2563eb]"
+                : "hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
+            }`}>
             <span className="line-clamp-1 flex-1">{ch.title}</span>
             <span className="text-[10px] text-gray-400 shrink-0 ml-2">{ch.order}</span>
           </Link>

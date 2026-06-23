@@ -20,8 +20,10 @@ export default function ReaderPage() {
   const [paged, setPaged] = useState(() => localStorage.getItem("rp") === "1");
   const [showToc, setShowToc] = useState(false);
   const tocRef = useRef<HTMLButtonElement>(null);
+  const tocContainerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [chapters, setChapters] = useState<{ id: string; title: string }[]>([]);
+  const [totalChapters, setTotalChapters] = useState(0);
   const [bookMeta, setBookMeta] = useState<{ title: string; author: string; coverUrl: string } | null>(null);
   const [chIdx, setChIdx] = useState(-1);
   const [page, setPage] = useState(0);
@@ -71,6 +73,7 @@ export default function ReaderPage() {
         return na - nb;
       });
       setChapters(raw);
+      setTotalChapters(b.chapterPage?.total || raw.length || 0);
       setBookMeta({ title: b.title, author: b.author || "", coverUrl: b.coverUrl || "" });
     }).catch(() => {});
     return () => { stale = true; };
@@ -98,6 +101,14 @@ export default function ReaderPage() {
     if (!site || !bookId || !chapterId || chIdx < 0) return;
     api.updateReadingProgress(site, bookId, chIdx, chapterId, chapterTitle).catch(() => {});
   }, [site, bookId, chapterId, chIdx, chapterTitle]);
+
+  // Auto-scroll TOC to center current chapter
+  useEffect(() => {
+    if (!showToc) return;
+    requestAnimationFrame(() => {
+      tocRef.current?.scrollIntoView?.({ block: "center", behavior: "instant" });
+    });
+  }, [showToc]);
 
   // Preload next chapters
   useEffect(() => {
@@ -246,7 +257,7 @@ export default function ReaderPage() {
       <div className="z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
         <Link to={`/book/${site}/${bookId}`} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">← 返回</Link>
         <span className="text-sm font-medium line-clamp-1 text-center mx-2 flex-1 min-w-0">{content?.title || chapterTitle}</span>
-        <button onClick={() => setShowToc(true)} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"} 目录</button>
+        <button onClick={() => setShowToc(true)} className="text-sm text-[#2563eb] hover:underline whitespace-nowrap">{chapters.length ? chIdx + 1 : "?"}/{totalChapters || chapters.length || "?"} 目录</button>
       </div>
 
       {/* Reading area */}
@@ -265,7 +276,7 @@ export default function ReaderPage() {
             {chapters.length > 0 && page === totalPages - 1 && (
               <div className="flex justify-between mt-2 shrink-0">
                 <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasPrevCh} onClick={() => { if (chapters[chIdx - 1]) goChapter(chapters[chIdx - 1].id); }}>← 上一章</button>
-                <span className="text-sm text-gray-400 self-center">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"}</span>
+                <span className="text-sm text-gray-400 self-center">{chapters.length ? chIdx + 1 : "?"}/{totalChapters || chapters.length || "?"}</span>
                 <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasNextCh} onClick={() => { if (chapters[chIdx + 1]) goChapter(chapters[chIdx + 1].id); }}>下一章 →</button>
               </div>
             )}
@@ -280,7 +291,7 @@ export default function ReaderPage() {
               </div>
               {chapters.length > 0 && <div className="flex justify-between mt-12 mb-8">
                 <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasPrevCh} onClick={() => { if (chapters[chIdx - 1]) goChapter(chapters[chIdx - 1].id); }}>← 上一章</button>
-                <span className="text-sm text-gray-400 self-center">{chapters.length ? chIdx + 1 : "?"}/{chapters.length || "?"}</span>
+                <span className="text-sm text-gray-400 self-center">{chapters.length ? chIdx + 1 : "?"}/{totalChapters || chapters.length || "?"}</span>
                 <button className="btn-ghost text-sm min-h-[44px]" disabled={!hasNextCh} onClick={() => { if (chapters[chIdx + 1]) goChapter(chapters[chIdx + 1].id); }}>下一章 →</button>
               </div>}
             </div>
@@ -308,7 +319,7 @@ export default function ReaderPage() {
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${i === chIdx ? "bg-[#2563eb]/10 text-[#2563eb] font-medium border-l-2 border-[#2563eb]" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
                 onClick={() => { goChapter(ch.id); setShowToc(false); }}
               >
-                <span className="text-xs text-gray-400 mr-2">{i + 1}/{chapters.length}</span>
+                <span className="text-xs text-gray-400 mr-2">{i + 1}/{totalChapters || chapters.length}</span>
                 {ch.title}
               </button>
             ))}

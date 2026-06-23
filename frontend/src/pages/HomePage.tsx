@@ -162,7 +162,7 @@ export default function HomePage() {
                       : <div className="w-full h-full flex items-center justify-center text-3xl text-gray-400">📖</div>}
                   </div>
                   <h3 className="text-xs font-medium line-clamp-2 leading-snug">{b.title}</h3>
-                  <span className="text-[10px] text-gray-400 mt-0.5">{b.site}</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">{b.author !== "未知" ? b.author : ""}</span>
                 </Link>
               ))}
             </div>
