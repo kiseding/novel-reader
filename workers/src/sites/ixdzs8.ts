@@ -1,7 +1,7 @@
 // Ported from go-novel-dl internal/site/ixdzs8.go
 import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL } from "../types";
 import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
-import { fetchMultiPageChapter, findNextPageUrl } from "../utils/chapter";
+// ixdzs8 chapters are single complete pages — no multi-page merge needed.
 
 const BASE = "https://ixdzs8.com";
 const BOOK_RE = /^\/read\/(\d+)\/?$/;
@@ -147,24 +147,7 @@ export class Ixdzs8Source implements SiteSource {
     if (!title) title = cleanText($("h3.page-content").first().text());
     if (!title) title = chapter.title;
 
-    const firstText = extractText(html);
-
-    // ── Fetch remaining pages via DOM link-following ────────────────
-    const fetchPage = (u: string) => this.fetchVerified(u, cookies);
-
-    const text = await fetchMultiPageChapter(
-      html,
-      firstText,
-      (p) => `${BASE}/read/${bookId}/${chapter.id}_${p}.html`,
-      extractText,
-      {
-        maxPages: 5,
-        concurrency: 2,
-        firstPageUrl: url,
-        fetchPage,
-        getNextPageUrl: findNextPageUrl,
-      },
-    );
+    const text = extractText(html);
 
     // ── Post-processing (title stripping, "本章完" removal) ──────
     const paragraphs = text.split("\n");

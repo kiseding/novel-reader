@@ -5,7 +5,6 @@ import { signToken, verifyToken, extractToken } from "../auth/jwt";
 import { hashPassword, verifyPassword } from "../auth/password";
 import * as db from "../db/schema";
 import { getRegistry } from "../sites/registry";
-import { cleanChapterContent } from "../utils/clean";
 import type { D1Database } from "@cloudflare/workers-types";
 import { rateLimit } from "../middleware/rateLimit";
 
@@ -301,7 +300,6 @@ api.get("/books/:site/:bookId/:chapterId", async (c) => {
   if (c.env.CACHE) { try { const cached = await c.env.CACHE.get(cacheKey, "json"); if (cached) return c.json(cached); } catch {} }
   try {
     const content = await getRegistry().getChapterContent(site, bookId, { id: chapterId, url: c.req.query("url") || "", title: c.req.query("title") || "" });
-    content.content = cleanChapterContent(content.content, content.title);
     if (c.env.CACHE) { c.executionCtx?.waitUntil(c.env.CACHE.put(cacheKey, JSON.stringify(content), { expirationTtl: 1800 })); }
     return c.json(content);
   } catch (e: any) { console.error(e); return c.json({ error: "服务暂时不可用" }, 502); }
