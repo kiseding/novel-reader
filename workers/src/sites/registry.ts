@@ -12,6 +12,8 @@ export interface SourceMeta {
   searchable: boolean;
 }
 
+export type RankType = "hot" | "day" | "month" | "end" | "new";
+
 // ixdzs8.com category IDs → display names
 const CATEGORIES: Record<string, string> = {
   "0": "其他",
@@ -28,6 +30,61 @@ const CATEGORIES: Record<string, string> = {
 };
 
 const BASE = "https://ixdzs8.com";
+
+/** Ranking page URL builder */
+const RANK_URLS: Record<RankType, string> = {
+  hot: `${BASE}/hot.html`,
+  day: `${BASE}/hot/day/`,
+  month: `${BASE}/hot/month/`,
+  end: `${BASE}/end`,
+  new: `${BASE}/new`,
+};
+
+const RANK_LABELS: Record<RankType, string> = {
+  hot: "🔥 热门",
+  day: "📈 日榜",
+  month: "📊 月榜",
+  end: "✅ 完结",
+  new: "🆕 最新",
+};
+
+/**
+ * Parse a ixdzs8 list page (`li.burl` items) into SearchResult[].
+ * Shared by homepage, categories, rankings, end, and new pages.
+ */
+function parseBookList(html: string, max = 30): SearchResult[] {
+  const books: SearchResult[] = [];
+  const seen = new Set<string>();
+  const $ = parseHTML(html);
+
+  $("li.burl").each((_, li) => {
+    if (books.length >= max) return false;
+
+    const $li = $(li);
+    const href = $li.attr("data-url") || "";
+    const bookId = href.match(/\/read\/(\d+)\//)?.[1];
+    if (!bookId || seen.has(bookId)) return;
+    seen.add(bookId);
+
+    const title = cleanText($li.find(".bname a").attr("title") || $li.find(".bname a").text());
+    const author = cleanText($li.find(".bauthor a").first().text());
+    const desc = cleanText($li.find("p.l-p2").first().text());
+    const coverUrl = $li.find(".l-img img").first().attr("src") || "";
+    const latestChapter = cleanText($li.find(".l-chapter").first().text());
+
+    if (!title) return;
+
+    books.push({
+      site: "ixdzs8", bookId, title, author: author || "未知",
+      description: desc,
+      url: `${BASE}/read/${bookId}/`,
+      coverUrl,
+      latestChapter,
+    });
+  });
+
+  return books.slice(0, max);
+}
 
 export class SiteRegistry {
   private sources: Map<string, SiteSource>;
@@ -55,93 +112,50 @@ export class SiteRegistry {
     return null;
   }
 
-  /**
-   * Homepage: scrape ixdzs8.com download ranking /hot.html.
-   * Shows `li.burl` items sorted by download count (热门排行_总榜).
-   */
-  async getHomepageBooks(): Promise<SearchResult[]> {
-    const books: SearchResult[] = [];
-    const seen = new Set<string>();
-
-    try {
-      const html = await fetchHTML(`${BASE}/hot.html`);
-      const $ = parseHTML(html);
-
-      $("li.burl").each((_, li) => {
-        if (books.length >= 30) return false;
-
-        const $li = $(li);
-        const href = $li.attr("data-url") || "";
-        const bookId = href.match(/\/read\/(\d+)\//)?.[1];
-        if (!bookId || seen.has(bookId)) return;
-        seen.add(bookId);
-
-        const title = cleanText($li.find(".bname a").attr("title") || $li.find(".bname a").text());
-        const author = cleanText($li.find(".bauthor a").first().text());
-        const desc = cleanText($li.find("p.l-p2").first().text());
-        const coverUrl = $li.find(".l-img img").first().attr("src") || "";
-        const latestChapter = cleanText($li.find(".l-chapter").first().text());
-
-        if (!title) return;
-
-        books.push({
-          site: "ixdzs8", bookId, title, author: author || "未知",
-          description: desc,
-          url: `${BASE}/read/${bookId}/`,
-          coverUrl,
-          latestChapter,
-        });
-      });
-    } catch (e) {
-      console.error("Failed to fetch ixdzs8 homepage:", e);
-    }
-
-    return books.slice(0, 30);
+  /** All available ranking types with labels (for frontend tabs) */
+  getRankTypes(): { key: RankType; label: string }[] {
+    return Object.entries(RANK_LABELS).map(([key, label]) => ({ key: key as RankType, label }));
   }
 
   /**
-   * Category books: scrape ixdzs8.com /sort/{slug}/ page.
-   * Slug is the numeric category ID (1-10).
+   * Fetch ranking / category / listing pages.
+   *
+   * @param type - rank type: "hot" | "day" | "month" | "end" | "new"
+   *        OR a numeric category slug: "1".."10"
+   * @returns Parsed list of books
    */
-  async getCategoryBooks(slug: string): Promise<SearchResult[]> {
-    const catName = CATEGORIES[slug];
-    if (!catName) return this.getHomepageBooks();
-
-    const books: SearchResult[] = [];
-    const seen = new Set<string>();
-
-    try {
-      const html = await fetchHTML(`${BASE}/sort/${slug}/`);
-      const $ = parseHTML(html);
-
-      $("li.burl").each((_, li) => {
-        if (books.length >= 30) return false;
-
-        const $li = $(li);
-        const href = $li.attr("data-url") || "";
-        const bookId = href.match(/\/read\/(\d+)\//)?.[1];
-        if (!bookId || seen.has(bookId)) return;
-        seen.add(bookId);
-
-        const title = cleanText($li.find(".bname a").attr("title") || $li.find(".bname a").text());
-        const author = cleanText($li.find(".bauthor a").first().text());
-
-        if (!title) return;
-
-        books.push({
-          site: "ixdzs8", bookId, title, author: author || "未知",
-          description: "",
-          url: `${BASE}/read/${bookId}/`,
-          coverUrl: $li.find(".l-img img").first().attr("src") || "",
-          latestChapter: "",
-        });
-      });
-    } catch (e) {
-      console.error(`Failed to fetch ixdzs8 category ${slug}:`, e);
+  async getHomepageBooks(type?: string): Promise<SearchResult[]> {
+    // Category lookup: slug "1".."10"
+    if (type && CATEGORIES[type]) {
+      try {
+        const html = await fetchHTML(`${BASE}/sort/${type}/`);
+        const books = parseBookList(html);
+        if (books.length) return books;
+      } catch (e) {
+        console.error(`Failed to fetch ixdzs8 category ${type}:`, e);
+      }
+      // Fallback: hot ranking
     }
 
-    if (books.length === 0) return this.getHomepageBooks();
-    return books.slice(0, 30);
+    // Ranking lookup: "hot" | "day" | "month" | "end" | "new"
+    if (type && RANK_URLS[type as RankType]) {
+      try {
+        const html = await fetchHTML(RANK_URLS[type as RankType]);
+        return parseBookList(html);
+      } catch (e) {
+        console.error(`Failed to fetch ixdzs8 ranking ${type}:`, e);
+      }
+      // Fallback: hot ranking
+    }
+
+    // Default: hot ranking
+    try {
+      const html = await fetchHTML(RANK_URLS.hot);
+      return parseBookList(html);
+    } catch (e) {
+      console.error("Failed to fetch ixdzs8 hot ranking:", e);
+      return [];
+    }
   }
 
   /**

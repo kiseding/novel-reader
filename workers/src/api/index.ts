@@ -161,12 +161,10 @@ api.get("/sources", async (c) => {
 
 // ========== Homepage ==========
 api.get("/homepage", async (c) => {
-  const tag = c.req.query("tag") || "";
+  const type = c.req.query("tag") || c.req.query("rank") || "";
   try {
-    const books = tag
-      ? await getRegistry().getCategoryBooks(tag)
-      : await getRegistry().getHomepageBooks();
-    return c.json({ books, tag });
+    const books = await getRegistry().getHomepageBooks(type || undefined);
+    return c.json({ books, tag: type });
   } catch (e) {
     console.error(e);
     return c.json({ error: "服务暂时不可用" }, 502);

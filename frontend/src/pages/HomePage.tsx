@@ -16,6 +16,15 @@ function scoreResult(item: SearchItem, keyword: string): number {
   return c * 5;
 }
 
+// Ranking types  (maps to ixdzs8.com URL paths)
+const RANKS: Array<{ label: string; key: string }> = [
+  { label: "🔥 热门", key: "hot" },
+  { label: "📈 日榜", key: "day" },
+  { label: "📊 月榜", key: "month" },
+  { label: "✅ 完结", key: "end" },
+  { label: "🆕 最新", key: "new" },
+];
+
 // Category IDs matching ixdzs8.com /sort/{id}/ paths
 const TAGS: Array<{ label: string; slug: string }> = [
   { label: "玄幻奇幻", slug: "1" },
@@ -46,31 +55,41 @@ export default function HomePage() {
   const { keyword, results, loading, sourceErrors, exactMatch } = useSearch();
   const [books, setBooks] = useState<SearchItem[]>([]);
   const [homeLoading, setHomeLoading] = useState(true);
-  const [activeTag, setActiveTag] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<string>("hot"); // "hot" | "day" | "month" | "end" | "new" | "1".."10"
   const [shuffleSeed, setShuffleSeed] = useState<number>(() => 0xC0FFEE);
 
   useEffect(() => {
     if (keyword) return;
     setHomeLoading(true);
-    api.getHomepage(activeTag || undefined)
+    // Fetch homepage: pass tag/rank as `type` parameter
+    api.getHomepage(activeTab)
       .then(res => { setBooks(res.books); setShuffleSeed(s => s + 1); })
       .catch(() => setBooks([]))
       .finally(() => setHomeLoading(false));
-  }, [keyword, activeTag]);
+  }, [keyword, activeTab]);
 
   const displayBooks = useMemo(() => {
-    if (!activeTag) return books;
-    // For tag results, randomize order so repeated taps surface different books.
-    return shuffle(books, shuffleSeed);
-  }, [books, activeTag, shuffleSeed]);
+    // For category tags, randomize order so repeated taps surface different books.
+    const isCategory = TAGS.some(t => t.slug === activeTab);
+    if (isCategory) return shuffle(books, shuffleSeed);
+    return books;
+  }, [books, activeTab, shuffleSeed]);
 
   const exactKey = exactMatch ? `${exactMatch.site}|${exactMatch.bookId}` : null;
   const otherResults = exactKey
     ? results.filter(r => `${r.site}|${r.bookId}` !== exactKey)
     : results;
   const sorted = [...otherResults].sort((a, b) => scoreResult(b, keyword) - scoreResult(a, keyword));
-  // Keep search view stable while a keyword is in flight; never bounce back to homepage.
   const showSearch = !!keyword;
+
+  // Determine the label of the active tab for the heading
+  const activeLabel = RANKS.find(r => r.key === activeTab)?.label
+    || TAGS.find(t => t.slug === activeTab)?.label
+    || "";
+
+  // Active tab tracking for button styles
+  const isRank = RANKS.some(r => r.key === activeTab);
+  const isCategory = TAGS.some(t => t.slug === activeTab);
 
   return (
     <div className="max-w-5xl mx-auto px-4 pt-2 pb-8">
@@ -105,32 +124,41 @@ export default function HomePage() {
         </>
       ) : (
         <>
-          {/* Tag chips */}
+          {/* Ranking tabs row */}
+          <div className="-mx-4 px-4 mb-3 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div className="flex gap-2 whitespace-nowrap pb-1">
+              {RANKS.map(r => (
+                <button
+                  key={r.key}
+                  onClick={() => setActiveTab(r.key)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium min-h-[32px] transition-colors"
+                  style={{
+                    background: activeTab === r.key ? "var(--primary)" : "var(--bg2)",
+                    color: activeTab === r.key ? "#fff" : "var(--t)",
+                    border: `1px solid ${activeTab === r.key ? "var(--primary)" : "var(--b)"}`,
+                  }}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category chips */}
           <div className="-mx-4 px-4 mb-4 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
             <div className="flex gap-2 whitespace-nowrap pb-1">
-              <button
-                onClick={() => setActiveTag("")}
-                className="px-3 py-1.5 rounded-full text-xs font-medium min-h-[32px] transition-colors"
-                style={{
-                  background: activeTag === "" ? "var(--primary)" : "var(--bg2)",
-                  color: activeTag === "" ? "#fff" : "var(--t)",
-                  border: `1px solid ${activeTag === "" ? "var(--primary)" : "var(--b)"}`,
-                }}
-              >
-                🔥 热门
-              </button>
               {TAGS.map(t => (
                 <button
                   key={t.slug}
                   onClick={() => {
-                    if (activeTag === t.slug) setShuffleSeed(s => s + 1);
-                    else setActiveTag(t.slug);
+                    if (activeTab === t.slug) setShuffleSeed(s => s + 1);
+                    else setActiveTab(t.slug);
                   }}
                   className="px-3 py-1.5 rounded-full text-xs font-medium min-h-[32px] transition-colors"
                   style={{
-                    background: activeTag === t.slug ? "var(--primary)" : "var(--bg2)",
-                    color: activeTag === t.slug ? "#fff" : "var(--t)",
-                    border: `1px solid ${activeTag === t.slug ? "var(--primary)" : "var(--b)"}`,
+                    background: activeTab === t.slug ? "var(--primary)" : "var(--bg2)",
+                    color: activeTab === t.slug ? "#fff" : "var(--t)",
+                    border: `1px solid ${activeTab === t.slug ? "var(--primary)" : "var(--b)"}`,
                   }}
                 >
                   {t.label}
@@ -139,9 +167,9 @@ export default function HomePage() {
             </div>
           </div>
 
-          <h1 className="text-lg font-bold mb-4">
-            {activeTag ? `${TAGS.find(t => t.slug === activeTag)?.label || ""} · 推荐` : "🔥 热门榜单"}
-          </h1>
+          {/* Section heading */}
+          <h1 className="text-lg font-bold mb-4">{activeLabel}</h1>
+
           {homeLoading ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {[1,2,3,4,5,6,7,8,9,10].map(i => <div key={i} className="skeleton h-48 rounded-xl" />)}
@@ -156,12 +184,12 @@ export default function HomePage() {
                       : <div className="w-full h-full flex items-center justify-center text-3xl text-gray-400">📖</div>}
                   </div>
                   <h3 className="text-xs font-medium line-clamp-2 leading-snug">{b.title}</h3>
-                  <span className="text-[10px] text-gray-400 mt-0.5">{b.site}</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">{b.author !== "未知" ? b.author : b.site}</span>
                 </Link>
               ))}
             </div>
           ) : (
-            <div className="text-center py-16 text-gray-500"><div className="text-4xl mb-4">📚</div><p>{activeTag ? "该分类暂无内容，已回退热门榜单" : "首页加载失败，请使用搜索功能"}</p></div>
+            <div className="text-center py-16 text-gray-500"><div className="text-4xl mb-4">📚</div><p>暂无内容</p></div>
           )}
         </>
       )}
