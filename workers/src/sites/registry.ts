@@ -1,6 +1,7 @@
 // Site source registry — ixdzs8 (爱下电子书) only
 import type { SiteSource, SearchResult, BookDetail } from "../types";
 import { Ixdzs8Source } from "./ixdzs8";
+import { Biquge7Source } from "./biquge7";
 import { fetchHTML, parseHTML, cleanText } from "../utils/http";
 
 export type { SearchResult };
@@ -82,7 +83,10 @@ export class SiteRegistry {
   private meta: SourceMeta[];
 
   constructor() {
-    const list: SiteSource[] = [new Ixdzs8Source()];
+    const list: SiteSource[] = [
+      new Ixdzs8Source(),
+      new Biquge7Source(),
+    ];
     this.sources = new Map();
     this.meta = [];
     for (const s of list) {
@@ -143,15 +147,22 @@ export class SiteRegistry {
   }
 
   async searchAll(sites: string[], keyword: string, limit: number): Promise<SearchResult[]> {
-    const source = this.sources.get("ixdzs8")!;
-    try {
-      return await Promise.race([
-        source.search(keyword, Math.min(limit, 10)),
-        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
-      ]) as SearchResult[];
-    } catch {
-      return [];
-    }
+    const targetSources = sites.length > 0
+      ? sites.map(k => this.sources.get(k)).filter(Boolean) as SiteSource[]
+      : Array.from(this.sources.values());
+    const results: SearchResult[] = [];
+
+    const promises = targetSources.map(async (source) => {
+      try {
+        return await Promise.race([
+          source.search(keyword, Math.min(limit, 5)),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
+        ]) as SearchResult[];
+      } catch { return []; }
+    });
+    const allResults = await Promise.all(promises);
+    for (const items of allResults) results.push(...items);
+    return results.slice(0, limit || results.length);
   }
 
   async getBookDetail(siteKey: string, bookId: string): Promise<BookDetail> {
