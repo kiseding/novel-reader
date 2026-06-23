@@ -60,11 +60,13 @@ export default function ReaderPage() {
     return () => { stale = true; };
   }, [site, bookId, chapterId]);
 
-  // Chapter list + book meta
+  // Chapter list + book meta — load the page containing the current chapter
   useEffect(() => {
     if (!site || !bookId) return;
     let stale = false;
-    api.getBookDetail(site, bookId).then((b: BookDetail) => {
+    const chapterNum = parseInt(chapterId?.replace("p", "") || "0", 10);
+    const targetPage = Math.ceil(chapterNum / 100) || 1;
+    api.getBookDetail(site, bookId, targetPage).then((b: BookDetail) => {
       if (stale) return;
       const raw = b.chapters.map(ch => ({ id: ch.id, title: ch.title }));
       raw.sort((a, b) => {
@@ -77,7 +79,7 @@ export default function ReaderPage() {
       setBookMeta({ title: b.title, author: b.author || "", coverUrl: b.coverUrl || "" });
     }).catch(() => {});
     return () => { stale = true; };
-  }, [site, bookId]);
+  }, [site, bookId, chapterId]);
 
   // Record reading history with real book metadata (book name as title, not chapter name)
   useEffect(() => {
