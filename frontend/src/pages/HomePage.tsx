@@ -115,8 +115,8 @@ export default function HomePage() {
       ) : (
         <>
           {/* Tag chips */}
-          <div className="-mx-4 px-4 mb-4 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
-            <div className="flex gap-2 whitespace-nowrap pb-1">
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => switchTag("")}
                 className="px-3 py-1.5 rounded-full text-xs font-medium min-h-[32px] transition-colors"
