@@ -58,11 +58,26 @@ function parseListPage(html: string, max = 30): { books: SearchResult[]; totalPa
     });
   });
 
-  // Extract total pages from paginator: <a href="...?page=N" title="最后一页">
+  // Extract total pages from paginator.
+  // Ranking pages: <a href="...?page=N" title="最后一页">
+  // Category pages: <a href="...index-0-0-0-N.html" class="num">
   let totalPages = 1;
-  const lastLink = $(`a[title="最后一页"]`).first().attr("href") || "";
-  const m = lastLink.match(/page=(\d+)/);
-  if (m) totalPages = parseInt(m[1], 10) || 1;
+
+  // Method 1: "最后一页" link with page=N (ranking pages)
+  const lastHref = $(`a[title="最后一页"]`).first().attr("href") || "";
+  const pageMatch = lastHref.match(/page=(\d+)/);
+  if (pageMatch) {
+    totalPages = parseInt(pageMatch[1], 10) || 1;
+  } else {
+    // Method 2: category pages — find max N in index-0-0-0-{N}.html links
+    let maxN = 1;
+    $(`a[href*="index-0-0-0-"]`).each((_, a) => {
+      const h = $(a).attr("href") || "";
+      const n = parseInt(h.match(/index-0-0-0-(\d+)\.html/)?.[1] || "0", 10);
+      if (n > maxN) maxN = n;
+    });
+    if (maxN > 1) totalPages = maxN;
+  }
 
   return { books: books.slice(0, max), totalPages };
 }
@@ -102,10 +117,13 @@ export class SiteRegistry {
    *   - "" / undefined                             → hot ranking (default)
    */
   async getHomepageBooks(type?: string, page = 1): Promise<{ books: SearchResult[]; totalPages: number }> {
-    // Category: /sort/{slug}/?page=N
+    // Category: /sort/{slug}/ (page 1) or /sort/{slug}/index-0-0-0-{page}.html
     if (type && CATEGORIES[type]) {
       try {
-        const html = await fetchHTML(`${BASE}/sort/${type}/?page=${page}`);
+        const catUrl = page <= 1
+          ? `${BASE}/sort/${type}/`
+          : `${BASE}/sort/${type}/index-0-0-0-${page}.html`;
+        const html = await fetchHTML(catUrl);
         const result = parseListPage(html);
         if (result.books.length) return result;
       } catch (e) {
