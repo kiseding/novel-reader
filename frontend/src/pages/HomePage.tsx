@@ -152,7 +152,7 @@ export default function HomePage() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {[1,2,3,4,5,6,7,8,9,10].map(i => <div key={i} className="skeleton h-48 rounded-xl" />)}
             </div>
-          ) : displayBooks.length > 0 ? (
+          ) : displayBooks.length > 0 ? (<>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {displayBooks.map((b, i) => (
                 <Link key={`${b.site}|${b.bookId}|${i}`} to={`/book/${b.site}/${b.bookId}`}
@@ -189,7 +189,7 @@ export default function HomePage() {
                 </button>
               </div>
             )}
-          ) : (
+          </>) : (
             <div className="text-center py-16 text-gray-500"><div className="text-4xl mb-4">📚</div><p>{activeTag ? "该分类暂无内容，已回退热门榜单" : "首页加载失败，请使用搜索功能"}</p></div>
           )}
         </>
