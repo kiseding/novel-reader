@@ -71,7 +71,7 @@ function parseListPage(html: string, max = 30): { books: SearchResult[]; totalPa
   } else {
     // Method 2: category pages — find max N in index-0-0-0-{N}.html links
     let maxN = 1;
-    $(`a[href*="index-0-0-0-"]`).each((_, a) => {
+    $(`a.num[href*="index-0-0-0-"]`).each((_, a) => {
       const h = $(a).attr("href") || "";
       const n = parseInt(h.match(/index-0-0-0-(\d+)\.html/)?.[1] || "0", 10);
       if (n > maxN) maxN = n;
