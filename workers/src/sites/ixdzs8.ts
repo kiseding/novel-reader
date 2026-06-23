@@ -1,6 +1,7 @@
 // Ported from go-novel-dl internal/site/ixdzs8.go
 import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL } from "../types";
 import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
+import { fetchMultiPageChapter } from "../utils/chapter";
 
 const BASE = "https://ixdzs8.com";
 const BOOK_RE = /^\/read\/(\d+)\/?$/;
@@ -104,38 +105,74 @@ export class Ixdzs8Source implements SiteSource {
     bookId: string,
     chapter: { id: string; url: string; title: string }
   ): Promise<ChapterContent> {
+    const url = chapter.url || `${BASE}/read/${bookId}/${chapter.id}.html`;
     const cookies: string[] = [];
-    const html = await this.fetchVerified(`${BASE}/read/${bookId}/${chapter.id}.html`, cookies);
+
+    // ── Extract text from ixdzs8 HTML ──────────────────────────────
+    const extractText = (h: string): string => {
+      const _$ = parseHTML(h);
+      const paras: string[] = [];
+
+      _$("section .page-content p").each((_, p) => {
+        if (_$(p).hasClass("abg")) return;
+        const text = cleanText(_$(p).text());
+        if (!text || isIxdzsAd(text)) return;
+        paras.push(text);
+      });
+
+      if (!paras.length) {
+        _$(".page-content").first().contents().each((_, node) => {
+          if (node.type === "text") {
+            const text = cleanText(_$(node).text());
+            if (text && !isIxdzsAd(text)) paras.push(text);
+          }
+        });
+      }
+
+      if (!paras.length) {
+        _$("p").each((_, p) => {
+          const text = cleanText(_$(p).text());
+          if (text && !isIxdzsAd(text)) paras.push(text);
+        });
+      }
+
+      return paras.join("\n");
+    };
+
+    // ── First page ─────────────────────────────────────────────────
+    const html = await this.fetchVerified(url, cookies);
     const $ = parseHTML(html);
 
     let title = cleanText($("h1.page-d-top").first().text());
     if (!title) title = cleanText($("h3.page-content").first().text());
     if (!title) title = chapter.title;
 
-    const paragraphs: string[] = [];
-    $("section .page-content p").each((_, p) => {
-      if ($(p).hasClass("abg")) return;
-      const text = cleanText($(p).text());
-      if (!text || isIxdzsAd(text)) return;
-      paragraphs.push(text);
-    });
+    const firstText = extractText(html);
 
-    if (!paragraphs.length) {
-      $(".page-content").first().contents().each((_, node) => {
-        if (node.type === "text") {
-          const text = cleanText($(node).text());
-          if (text && !isIxdzsAd(text)) paragraphs.push(text);
-        }
-      });
-    }
+    // ── Fetch remaining pages via DOM link-following ────────────────
+    const fetchPage = (u: string) => this.fetchVerified(u, cookies);
 
-    if (!paragraphs.length) {
-      $("p").each((_, p) => {
-        const text = cleanText($(p).text());
-        if (text && !isIxdzsAd(text)) paragraphs.push(text);
-      });
-    }
+    const text = await fetchMultiPageChapter(
+      html,
+      firstText,
+      (p) => `${BASE}/read/${bookId}/${chapter.id}_${p}.html`,
+      extractText,
+      {
+        maxPages: 5,
+        concurrency: 2,
+        firstPageUrl: url,
+        fetchPage,
+        getNextPageUrl: (currentHtml, currentUrl) => {
+          const _$ = parseHTML(currentHtml);
+          const nextLink = _$('a:contains("下一页"), a:contains("下一頁"), a[rel="next"]').first();
+          const href = nextLink.attr("href");
+          return href ? absolutizeURL(currentUrl, href) : null;
+        },
+      },
+    );
 
+    // ── Post-processing (title stripping, "本章完" removal) ──────
+    const paragraphs = text.split("\n");
     if (paragraphs.length && title) {
       const first = paragraphs[0].replace(title, "").replace(title.replace(/\s/g, ""), "").trim();
       if (!first) paragraphs.shift();
@@ -146,9 +183,10 @@ export class Ixdzs8Source implements SiteSource {
       paragraphs.pop();
     }
 
-    if (!paragraphs.length) throw new Error("ixdzs8 章节内容未找到");
+    const content = paragraphs.join("\n");
+    if (!content.trim()) throw new Error("ixdzs8 章节内容未找到");
 
-    return { id: chapter.id, title, content: paragraphs.join("\n") };
+    return { id: chapter.id, title, content };
   }
 
   private async fetchVerified(url: string, cookies: string[]): Promise<string> {

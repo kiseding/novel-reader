@@ -167,7 +167,17 @@ export class Biquge345Source implements SiteSource {
       firstText,
       (p) => `${BASE}/chapter/${bookId}/${chapter.id}_${p}.html`,
       extractText,
-      { maxPages: 5, concurrency: 2 }
+      {
+        maxPages: 5,
+        concurrency: 2,
+        firstPageUrl: url,
+        getNextPageUrl: (currentHtml, currentUrl) => {
+          const _$ = parseHTML(currentHtml);
+          const nextLink = _$('a:contains("下一页"), a:contains("下一頁")').first();
+          const href = nextLink.attr("href");
+          return href ? absolutizeURL(currentUrl, href) : null;
+        },
+      }
     );
 
     return { id: chapter.id, title, content: text };
