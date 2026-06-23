@@ -12,6 +12,11 @@ interface Props {
   showDescription?: boolean;
 }
 
+const SITE_NAMES: Record<string, string> = {
+  ixdzs8: "爱下电子书",
+  biquge7: "新笔趣阁",
+};
+
 export default function BookCard({
   site, bookId, title, author, description, coverUrl, latestChapter, showDescription = true,
 }: Props) {
@@ -40,7 +45,7 @@ export default function BookCard({
           <p className="text-xs text-accent mt-1 line-clamp-1">{latestChapter}</p>
         )}
         <span className="inline-block mt-1 text-[10px] text-gray-400 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">
-          {site}
+          {SITE_NAMES[site] || site}
         </span>
       </div>
     </Link>
