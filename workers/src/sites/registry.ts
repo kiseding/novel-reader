@@ -1,14 +1,9 @@
-// Site source registry — 4 verified-working 转载站
+// Site source registry — ixdzs8 (爱下电子书) only
 import type { SiteSource, SearchResult, BookDetail } from "../types";
-
-// Re-export SearchResult for the homepage
-export type { SearchResult };
-
-import { Biquge345Source } from "./biquge345";
-import { Biquge5Source } from "./biquge5";
 import { Ixdzs8Source } from "./ixdzs8";
-import { FsshuSource } from "./fsshu";
-import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
+import { fetchHTML, parseHTML, cleanText } from "../utils/http";
+
+export type { SearchResult };
 
 export interface SourceMeta {
   key: string;
@@ -17,17 +12,29 @@ export interface SourceMeta {
   searchable: boolean;
 }
 
+// ixdzs8.com category IDs → display names
+const CATEGORIES: Record<string, string> = {
+  "0": "其他",
+  "1": "玄幻奇幻",
+  "2": "修真仙侠",
+  "3": "都市青春",
+  "4": "军事历史",
+  "5": "网游竞技",
+  "6": "科幻灵异",
+  "7": "言情穿越",
+  "8": "耽美同人",
+  "9": "台言古言",
+  "10": "传统武侠",
+};
+
+const BASE = "https://ixdzs8.com";
+
 export class SiteRegistry {
   private sources: Map<string, SiteSource>;
   private meta: SourceMeta[];
 
   constructor() {
-    const list: SiteSource[] = [
-      new Biquge345Source(),
-      new Biquge5Source(),
-      new Ixdzs8Source(),
-      new FsshuSource(),
-    ];
+    const list: SiteSource[] = [new Ixdzs8Source()];
     this.sources = new Map();
     this.meta = [];
     for (const s of list) {
@@ -48,143 +55,125 @@ export class SiteRegistry {
     return null;
   }
 
-  // Homepage — scrape /top/ ranking with homepage fallback
+  /**
+   * Homepage: scrape ixdzs8.com homepage for recent update list.
+   * The homepage shows `li.burl` items with latest updated novels.
+   */
   async getHomepageBooks(): Promise<SearchResult[]> {
     const books: SearchResult[] = [];
     const seen = new Set<string>();
-    // Try biquge5 /top/ first, then fsshu /top/, then homepage fallback
-    const sources: Array<{ key: string; url: string }> = [
-      { key: "biquge5", url: "https://www.biquge5.com/top/" },
-      { key: "fsshu", url: "https://www.fsshu.com/top/" },
-    ];
-    for (const src of sources) {
-      if (books.length >= 20) break;
-      try {
-        const html = await fetchHTML(src.url);
-        const $ = parseHTML(html);
-        const base = src.key === "biquge5" ? "https://www.biquge5.com" : "https://www.fsshu.com";
-        $("a").each((_, a) => {
-          if (books.length >= 30) return false;
-          const href = $(a).attr("href") || "";
-          const m = href.match(/^\/(\d+_\d+)\/?$/);
-          if (!m) return;
-          const bookId = m[1];
-          if (seen.has(bookId)) return;
-          seen.add(bookId);
-          const title = cleanText($(a).attr("title") || $(a).text())
-            .replace(/^\[[^\]]+\]\s*/, "").replace(/\s*全文阅读$/, "").trim();
-          if (!title) return;
-          books.push({
-            site: src.key, bookId, title, author: "", description: "",
-            url: base + href,
-            coverUrl: `${base}/images/${bookId.split("_")[0]}/${bookId.split("_")[1]}/${bookId.split("_")[1]}s.jpg`,
-            latestChapter: "",
-          });
+
+    try {
+      const html = await fetchHTML(`${BASE}/`);
+      const $ = parseHTML(html);
+
+      $("li.burl").each((_, li) => {
+        if (books.length >= 30) return false;
+
+        const $li = $(li);
+        const href = $li.attr("data-url") || "";
+        const bookId = href.match(/\/read\/(\d+)\//)?.[1];
+        if (!bookId || seen.has(bookId)) return;
+        seen.add(bookId);
+
+        const title = cleanText($li.find(".bname a").attr("title") || $li.find(".bname a").text());
+        const author = cleanText($li.find(".bauthor a").first().text());
+        const desc = cleanText($li.find("p.l-p2").first().text());
+        const coverUrl = $li.find(".l-img img").first().attr("src") || "";
+        const latestChapter = cleanText($li.find(".l-chapter").first().text());
+
+        if (!title) return;
+
+        books.push({
+          site: "ixdzs8", bookId, title, author: author || "未知",
+          description: desc,
+          url: `${BASE}/read/${bookId}/`,
+          coverUrl,
+          latestChapter,
         });
-      } catch {}
+      });
+    } catch (e) {
+      console.error("Failed to fetch ixdzs8 homepage:", e);
     }
-    // Fallback: homepage
-    if (books.length === 0) {
-      try {
-        const html = await fetchHTML("https://www.biquge5.com/");
-        const $ = parseHTML(html);
-        $("a").each((_, a) => {
-          if (books.length >= 30) return false;
-          const href = $(a).attr("href") || "";
-          const m = href.match(/^\/(\d+_\d+)\/?$/);
-          if (!m) return;
-          const bookId = m[1];
-          if (seen.has(bookId)) return;
-          seen.add(bookId);
-          const title = cleanText($(a).attr("title") || $(a).text())
-            .replace(/^\[[^\]]+\]\s*/, "").replace(/\s*全文阅读$/, "").trim();
-          if (!title) return;
-          const [cat, id] = bookId.split("_");
-          books.push({
-            site: "biquge5", bookId, title, author: "", description: "",
-            url: `https://www.biquge5.com/${bookId}/`,
-            coverUrl: `https://www.biquge5.com/images/${cat}/${id}/${id}s.jpg`,
-            latestChapter: "",
-          });
-        });
-      } catch {}
-    }
+
     return books.slice(0, 30);
   }
 
-  // Category books — scrape /top/ ranking page which has [`玄幻`] category markers,
-  // then filter by category name. Much more reliable than per-category pages.
-  private CAT_NAMES: Record<string, string> = {
-    "1": "玄幻", "2": "武侠", "3": "都市", "4": "历史",
-    "5": "网游", "6": "科幻", "7": "言情",
-  };
-
+  /**
+   * Category books: scrape ixdzs8.com /sort/{slug}/ page.
+   * Slug is the numeric category ID (1-10).
+   */
   async getCategoryBooks(slug: string): Promise<SearchResult[]> {
-    const catName = this.CAT_NAMES[slug];
+    const catName = CATEGORIES[slug];
     if (!catName) return this.getHomepageBooks();
 
     const books: SearchResult[] = [];
     const seen = new Set<string>();
+
     try {
-      const html = await fetchHTML("https://www.biquge5.com/top/");
+      const html = await fetchHTML(`${BASE}/sort/${slug}/`);
       const $ = parseHTML(html);
-      $("a").each((_, a) => {
+
+      $("li.burl").each((_, li) => {
         if (books.length >= 30) return false;
-        const href = $(a).attr("href") || "";
-        const m = href.match(/^\/(\d+_\d+)\/?$/);
-        if (!m) return;
-        const bookId = m[1];
-        if (seen.has(bookId)) return;
+
+        const $li = $(li);
+        const href = $li.attr("data-url") || "";
+        const bookId = href.match(/\/read\/(\d+)\//)?.[1];
+        if (!bookId || seen.has(bookId)) return;
         seen.add(bookId);
-        const raw = cleanText($(a).attr("title") || $(a).text());
-        const catMatch = raw.match(/^\[([^\]]+)\]/);
-        if (!catMatch || catMatch[1] !== catName) return;
-        const title = raw.replace(/^\[[^\]]+\]\s*/, "").replace(/\s*全文阅读$/, "").trim();
+
+        const title = cleanText($li.find(".bname a").attr("title") || $li.find(".bname a").text());
+        const author = cleanText($li.find(".bauthor a").first().text());
+
         if (!title) return;
-        const [cat, id] = bookId.split("_");
+
         books.push({
-          site: "biquge5", bookId, title, author: "", description: "",
-          url: `https://www.biquge5.com/${bookId}/`,
-          coverUrl: `https://www.biquge5.com/images/${cat}/${id}/${id}s.jpg`,
+          site: "ixdzs8", bookId, title, author: author || "未知",
+          description: "",
+          url: `${BASE}/read/${bookId}/`,
+          coverUrl: $li.find(".l-img img").first().attr("src") || "",
           latestChapter: "",
         });
       });
-    } catch {}
+    } catch (e) {
+      console.error(`Failed to fetch ixdzs8 category ${slug}:`, e);
+    }
+
     if (books.length === 0) return this.getHomepageBooks();
     return books.slice(0, 30);
   }
 
+  /**
+   * Search all sources. Since there's only ixdzs8, delegate directly.
+   */
   async searchAll(sites: string[], keyword: string, limit: number): Promise<SearchResult[]> {
-    const targetSources = sites.length > 0
-      ? sites.map(k => this.sources.get(k)).filter(Boolean) as SiteSource[]
-      : Array.from(this.sources.values());
-    const results: SearchResult[] = [];
-
-    // Per-source 8s timeout via Promise.race, max 5 results per source
-    const promises = targetSources.map(async (source) => {
-      try {
-        return await Promise.race([
-          source.search(keyword, Math.min(limit, 5)),
-          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
-        ]) as SearchResult[];
-      } catch { return []; }
-    });
-    const allResults = await Promise.all(promises);
-    for (const items of allResults) results.push(...items);
-    return results.slice(0, limit || results.length);
+    const source = this.sources.get("ixdzs8")!;
+    try {
+      return await Promise.race([
+        source.search(keyword, Math.min(limit, 10)),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
+      ]) as SearchResult[];
+    } catch {
+      return [];
+    }
   }
 
   async getBookDetail(siteKey: string, bookId: string): Promise<BookDetail> {
     const source = this.sources.get(siteKey);
     if (!source) throw new Error(`未找到书源: ${siteKey}`);
-    const detail = await source.downloadPlan(bookId);
-    return detail;
+    return source.downloadPlan(bookId);
   }
 
   async getChapterContent(siteKey: string, bookId: string, chapter: { id: string; url: string; title: string }) {
     const source = this.sources.get(siteKey);
     if (!source) throw new Error(`未找到书源: ${siteKey}`);
     return source.fetchChapter(bookId, chapter);
+  }
+
+  /** Get available categories (for frontend dropdown) */
+  getCategories(): { id: string; name: string }[] {
+    return Object.entries(CATEGORIES).map(([id, name]) => ({ id, name }));
   }
 }
 

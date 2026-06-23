@@ -16,15 +16,18 @@ function scoreResult(item: SearchItem, keyword: string): number {
   return c * 5;
 }
 
-// Numeric category IDs matching biquge5 /list{N}/ paths
+// Category IDs matching ixdzs8.com /sort/{id}/ paths
 const TAGS: Array<{ label: string; slug: string }> = [
-  { label: "玄幻", slug: "1" },
-  { label: "武侠", slug: "2" },
-  { label: "都市", slug: "3" },
-  { label: "历史", slug: "4" },
-  { label: "网游", slug: "5" },
-  { label: "科幻", slug: "6" },
-  { label: "言情", slug: "7" },
+  { label: "玄幻奇幻", slug: "1" },
+  { label: "修真仙侠", slug: "2" },
+  { label: "都市青春", slug: "3" },
+  { label: "军事历史", slug: "4" },
+  { label: "网游竞技", slug: "5" },
+  { label: "科幻灵异", slug: "6" },
+  { label: "言情穿越", slug: "7" },
+  { label: "耽美同人", slug: "8" },
+  { label: "台言古言", slug: "9" },
+  { label: "传统武侠", slug: "10" },
 ];
 
 // Stable per-mount shuffle so books don't re-order on each render.
