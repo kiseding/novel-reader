@@ -162,11 +162,10 @@ api.get("/sources", async (c) => {
 // ========== Homepage ==========
 api.get("/homepage", async (c) => {
   const tag = c.req.query("tag") || "";
+  const page = Math.max(1, parseInt(c.req.query("page") || "1"));
   try {
-    const books = tag
-      ? await getRegistry().getCategoryBooks(tag)
-      : await getRegistry().getHomepageBooks();
-    return c.json({ books, tag });
+    const result = await getRegistry().getHomepageBooks(tag || undefined, page);
+    return c.json({ books: result.books, tag, page, totalPages: result.totalPages });
   } catch (e) {
     console.error(e);
     return c.json({ error: "服务暂时不可用" }, 502);

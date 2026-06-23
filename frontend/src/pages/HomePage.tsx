@@ -48,15 +48,24 @@ export default function HomePage() {
   const [homeLoading, setHomeLoading] = useState(true);
   const [activeTag, setActiveTag] = useState<string>("");
   const [shuffleSeed, setShuffleSeed] = useState<number>(() => 0xC0FFEE);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     if (keyword) return;
     setHomeLoading(true);
-    api.getHomepage(activeTag || undefined)
-      .then(res => { setBooks(res.books); setShuffleSeed(s => s + 1); })
+    api.getHomepage(activeTag || undefined, page)
+      .then(res => { setBooks(res.books); setTotalPages(res.totalPages || 1); setShuffleSeed(s => s + 1); })
       .catch(() => setBooks([]))
       .finally(() => setHomeLoading(false));
-  }, [keyword, activeTag]);
+  }, [keyword, activeTag, page]);
+
+  // Reset page when switching tabs
+  const switchTag = (tag: string) => {
+    if (activeTag === tag) { setShuffleSeed(s => s + 1); return; }
+    setPage(1);
+    setActiveTag(tag);
+  };
 
   const displayBooks = useMemo(() => {
     if (!activeTag) return books;
@@ -109,7 +118,7 @@ export default function HomePage() {
           <div className="-mx-4 px-4 mb-4 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
             <div className="flex gap-2 whitespace-nowrap pb-1">
               <button
-                onClick={() => setActiveTag("")}
+                onClick={() => switchTag("")}
                 className="px-3 py-1.5 rounded-full text-xs font-medium min-h-[32px] transition-colors"
                 style={{
                   background: activeTag === "" ? "var(--primary)" : "var(--bg2)",
@@ -122,10 +131,7 @@ export default function HomePage() {
               {TAGS.map(t => (
                 <button
                   key={t.slug}
-                  onClick={() => {
-                    if (activeTag === t.slug) setShuffleSeed(s => s + 1);
-                    else setActiveTag(t.slug);
-                  }}
+                  onClick={() => switchTag(t.slug)}
                   className="px-3 py-1.5 rounded-full text-xs font-medium min-h-[32px] transition-colors"
                   style={{
                     background: activeTag === t.slug ? "var(--primary)" : "var(--bg2)",
@@ -160,6 +166,29 @@ export default function HomePage() {
                 </Link>
               ))}
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-6">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className="px-4 py-2 rounded-lg text-xs font-medium min-h-[36px] disabled:opacity-30 transition-colors"
+                  style={{ background: "var(--bg2)", color: "var(--t)", border: "1px solid var(--b)" }}
+                >
+                  上一页
+                </button>
+                <span className="text-xs text-gray-500">{page} / {totalPages}</span>
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  className="px-4 py-2 rounded-lg text-xs font-medium min-h-[36px] disabled:opacity-30 transition-colors"
+                  style={{ background: "var(--bg2)", color: "var(--t)", border: "1px solid var(--b)" }}
+                >
+                  下一页
+                </button>
+              </div>
+            )}
           ) : (
             <div className="text-center py-16 text-gray-500"><div className="text-4xl mb-4">📚</div><p>{activeTag ? "该分类暂无内容，已回退热门榜单" : "首页加载失败，请使用搜索功能"}</p></div>
           )}

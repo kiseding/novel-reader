@@ -72,7 +72,7 @@ export async function adminCreateUser(username: string, password: string) { retu
 export async function adminDeleteUser(id: number) { return request<{ ok: boolean }>(`/admin/users/${id}`, { method: "DELETE" }); }
 export async function adminResetPassword(id: number, password: string) { return request<{ ok: boolean }>(`/admin/users/${id}/reset-password`, { method: "PUT", body: JSON.stringify({ password }) }); }
 export async function getSources() { return request<{ sources: SourceMeta[] }>("/sources"); }
-export async function getHomepage(tag?: string) { return request<{ books: SearchItem[]; tag?: string }>(`/homepage${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`); }
+export async function getHomepage(tag?: string, page = 1) { return request<{ books: SearchItem[]; tag?: string; page?: number; totalPages?: number }>(`/homepage${tag ? `?tag=${encodeURIComponent(tag)}` : ""}&page=${page}`); }
 export async function search(keyword: string, sites?: string[]) { return request<{ results?: SearchItem[]; urlSearch?: boolean; item?: SearchItem }>("/search", { method: "POST", body: JSON.stringify({ keyword, sites }) }); }
 export async function getBookDetail(site: string, bookId: string, page = 1, pageSize = 500) { return request<BookDetail>(`/books/${site}/${bookId}?page=${page}&page_size=${pageSize}`); }
 export async function getChapterContent(site: string, bookId: string, chapterId: string, title: string, url: string) { return request<ChapterContent>(`/books/${site}/${bookId}/${chapterId}?${new URLSearchParams({ title, url })}`); }
