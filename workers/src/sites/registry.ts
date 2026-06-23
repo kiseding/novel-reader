@@ -56,15 +56,15 @@ export class SiteRegistry {
   }
 
   /**
-   * Homepage: scrape ixdzs8.com homepage for recent update list.
-   * The homepage shows `li.burl` items with latest updated novels.
+   * Homepage: scrape ixdzs8.com download ranking /hot.html.
+   * Shows `li.burl` items sorted by download count (热门排行_总榜).
    */
   async getHomepageBooks(): Promise<SearchResult[]> {
     const books: SearchResult[] = [];
     const seen = new Set<string>();
 
     try {
-      const html = await fetchHTML(`${BASE}/`);
+      const html = await fetchHTML(`${BASE}/hot.html`);
       const $ = parseHTML(html);
 
       $("li.burl").each((_, li) => {
