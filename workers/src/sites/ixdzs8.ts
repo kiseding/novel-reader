@@ -1,7 +1,7 @@
 // Ported from go-novel-dl internal/site/ixdzs8.go
 import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL } from "../types";
 import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
-import { fetchMultiPageChapter } from "../utils/chapter";
+import { fetchMultiPageChapter, findNextPageUrl } from "../utils/chapter";
 
 const BASE = "https://ixdzs8.com";
 const BOOK_RE = /^\/read\/(\d+)\/?$/;
@@ -162,12 +162,7 @@ export class Ixdzs8Source implements SiteSource {
         concurrency: 2,
         firstPageUrl: url,
         fetchPage,
-        getNextPageUrl: (currentHtml, currentUrl) => {
-          const _$ = parseHTML(currentHtml);
-          const nextLink = _$('a:contains("下一页"), a:contains("下一頁"), a[rel="next"]').first();
-          const href = nextLink.attr("href");
-          return href ? absolutizeURL(currentUrl, href) : null;
-        },
+        getNextPageUrl: findNextPageUrl,
       },
     );
 

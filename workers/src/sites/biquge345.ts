@@ -1,7 +1,7 @@
 // Ported from go-novel-dl internal/site/biquge345.go
 import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL } from "../types";
 import { fetchHTML, postFormHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
-import { fetchMultiPageChapter } from "../utils/chapter";
+import { fetchMultiPageChapter, findNextPageUrl } from "../utils/chapter";
 
 const BASE = "https://www.biquge345.com";
 const BOOK_RE = /^\/book\/(\d+)\/?$/;
@@ -171,12 +171,7 @@ export class Biquge345Source implements SiteSource {
         maxPages: 5,
         concurrency: 2,
         firstPageUrl: url,
-        getNextPageUrl: (currentHtml, currentUrl) => {
-          const _$ = parseHTML(currentHtml);
-          const nextLink = _$('a:contains("下一页"), a:contains("下一頁")').first();
-          const href = nextLink.attr("href");
-          return href ? absolutizeURL(currentUrl, href) : null;
-        },
+        getNextPageUrl: findNextPageUrl,
       }
     );
 

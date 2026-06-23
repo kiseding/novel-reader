@@ -3,7 +3,7 @@ import type { SiteSource, SearchResult, BookDetail, ChapterContent, ResolvedURL 
 import { fetchHTML, parseHTML, absolutizeURL, cleanText } from "../utils/http";
 import { withRetry } from "../utils/retry";
 import { cleanChapterContent } from "../utils/clean";
-import { fetchMultiPageChapter } from "../utils/chapter";
+import { fetchMultiPageChapter, findNextPageUrl } from "../utils/chapter";
 
 const BASE = "https://www.fsshu.com";
 const PREFIX = "/biquge";
@@ -127,12 +127,7 @@ export class FsshuSource implements SiteSource {
         maxPages: 5,
         concurrency: 2,
         firstPageUrl: url,
-        getNextPageUrl: (currentHtml, currentUrl) => {
-          const _$ = parseHTML(currentHtml);
-          const nextLink = _$('a:contains("下一页"), a:contains("下一頁")').first();
-          const href = nextLink.attr("href");
-          return href ? absolutizeURL(currentUrl, href) : null;
-        },
+        getNextPageUrl: findNextPageUrl,
       }
     );
 
