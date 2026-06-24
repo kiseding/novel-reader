@@ -2,6 +2,8 @@
 import type { SiteSource, SearchResult, BookDetail } from "../types";
 import { Ixdzs8Source } from "./ixdzs8";
 import { Biquge7Source } from "./biquge7";
+import { SilukeSource } from "./siluke";
+import { Quanben5Source } from "./quanben5";
 import { fetchHTML, parseHTML, cleanText } from "../utils/http";
 
 export type { SearchResult };
@@ -86,6 +88,8 @@ export class SiteRegistry {
     const list: SiteSource[] = [
       new Ixdzs8Source(),
       new Biquge7Source(),
+      new SilukeSource(),
+      new Quanben5Source(),
     ];
     this.sources = new Map();
     this.meta = [];

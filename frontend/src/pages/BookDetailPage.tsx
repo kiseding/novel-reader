@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import * as api from "../lib/api";
 import type { BookDetail, BookshelfItem } from "../lib/api";
@@ -23,6 +23,7 @@ export default function BookDetailPage() {
   const [msg, setMsg] = useState("");
   const [currentChapterId, setCurrentChapterId] = useState("");
   const autoPageRef = useRef(false);
+  const currentChapterRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
     if (!site || !bookId) return;
@@ -57,6 +58,15 @@ export default function BookDetailPage() {
     });
     window.caches.keys().then(keys => { setIsCached(keys.some(k => k.includes(`/cache/${site}/${bookId}/`))); }).catch(() => {});
   }, [site, bookId, chapterPage, user]);
+
+  // Scroll current chapter into center of the chapter list
+  useEffect(() => {
+    if (currentChapterId && currentChapterRef.current) {
+      requestAnimationFrame(() => {
+        currentChapterRef.current?.scrollIntoView({ block: "center", behavior: "instant" });
+      });
+    }
+  }, [currentChapterId, book?.chapters]);
 
   const toggleBookshelf = async () => {
     if (!user) { navigate("/login"); return; }
@@ -160,7 +170,8 @@ export default function BookDetailPage() {
       <h2 className="text-sm font-medium mb-3">目录</h2>
       <div className="space-y-0.5">
         {book.chapters.map((ch, i) => (
-          <Link key={ch.id} to={`/read/${site}/${bookId}/${ch.id}?title=${encodeURIComponent(ch.title)}&url=${encodeURIComponent(ch.url || "")}`}
+          <Link key={ch.id} ref={ch.id === currentChapterId ? currentChapterRef : undefined}
+            to={`/read/${site}/${bookId}/${ch.id}?title=${encodeURIComponent(ch.title)}&url=${encodeURIComponent(ch.url || "")}`}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors min-h-[44px] ${
               ch.id === currentChapterId
                 ? "bg-[#2563eb]/10 text-[#2563eb] font-medium border-l-2 border-[#2563eb]"
